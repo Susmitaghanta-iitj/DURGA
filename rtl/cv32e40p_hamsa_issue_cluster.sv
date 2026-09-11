@@ -71,7 +71,9 @@ module cv32e40p_hamsa_issue_cluster (
 
   integer i;
 
-  cv32e40p_dual_issue_idu idu_i (
+  cv32e40p_dual_issue_idu #(
+      .SPECULATE_BEHIND_BRANCH(1'b1)
+  ) idu_i (
       .inst1_valid_i        (inst1_valid_i),
       .inst1_i              (inst1_i),
       .inst2_valid_i        (inst2_valid_i),
