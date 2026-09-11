@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Run a CV32E40P example-testbench firmware for B0/H0/H1 evaluation.
+"""Run one CV32E40P/HAMSA configuration in the example testbench.
 
-B0: untouched baseline core with evaluation-only testbench counters.
-H0: HAMSA integration present, Issue2 disabled; Inst2 always replays on Issue1.
-H1: HAMSA backend dual issue enabled with the 32-bit bring-up frontend.
-H2 remains reserved until the real 128-bit L0 refill interface is wired.
+Configurations:
+  B0      original CV32E40P + evaluation-only counters
+  H0      HAMSA backend integration, Issue2 disabled
+  H1      HAMSA backend integration, Issue2 enabled, sequential pair assembly
+  H2-32   real 8x128-bit L0/RV32C frontend, four legacy 32-bit refill beats
+  H2-128  same H2 frontend, native one-transaction 128-bit line refill
+  H2      alias for H2-32 for backwards-compatible scripts
 """
 
 from __future__ import annotations
@@ -24,7 +27,10 @@ def run(cmd: list[str], cwd: Path) -> int:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("configuration", choices=["B0", "H0", "H1", "H2"])
+    p.add_argument(
+        "configuration",
+        choices=["B0", "H0", "H1", "H2", "H2-32", "H2-128"],
+    )
     p.add_argument("firmware", type=Path)
     p.add_argument("--maxcycles", type=int, default=20_000_000)
     p.add_argument("--vsim-flags", default="")
@@ -34,14 +40,10 @@ def main() -> None:
     if not fw.exists():
         raise SystemExit(f"firmware not found: {fw}")
 
-    if args.configuration == "H2":
-        raise SystemExit(
-            "H2 is reserved but not executable yet: the real 128-bit L0 refill "
-            "interface still needs to be wired into the SoC/testbench."
-        )
+    cfg = "H2-32" if args.configuration == "H2" else args.configuration
 
-    if args.configuration in {"H0", "H1"}:
-        enable_issue2 = "1" if args.configuration == "H1" else "0"
+    if cfg in {"H0", "H1"}:
+        enable_issue2 = "1" if cfg == "H1" else "0"
         subprocess.run(
             ["python3", str(ROOT / "util" / "gen_hamsa_sim.py"),
              "--enable-issue2", enable_issue2],
@@ -51,6 +53,18 @@ def main() -> None:
         manifest = str(ROOT / "cv32e40p_manifest_hamsa.flist")
         tb_top = "tb_top_hamsa.sv"
         vopt_top = "tb_top_hamsa_vopt"
+    elif cfg in {"H2-32", "H2-128"}:
+        native = "1" if cfg == "H2-128" else "0"
+        suffix = "h2_128" if cfg == "H2-128" else "h2_32"
+        subprocess.run(
+            ["python3", str(ROOT / "util" / "gen_hamsa_sim_h2.py"),
+             "--native", native],
+            cwd=ROOT,
+            check=True,
+        )
+        manifest = str(ROOT / f"cv32e40p_manifest_{suffix}.flist")
+        tb_top = f"tb_top_{suffix}.sv"
+        vopt_top = f"tb_top_{suffix}_vopt"
     else:
         subprocess.run(
             ["python3", str(ROOT / "util" / "gen_baseline_eval_tb.py")],
