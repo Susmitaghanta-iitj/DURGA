@@ -4,7 +4,7 @@
 // Asymmetric dual-issue cluster used to integrate HAMSA-DI behavior with the
 // CV32E40P primary pipeline. Issue1 remains external/full-featured. This block
 // decides whether the optional younger instruction can issue, obtains operands
-// from a mirrored architectural RF, applies primary forwarding, executes the
+// from a mirrored architectural RF, applies cross-lane forwarding, executes the
 // restricted Issue2 ALU lane, and arbitrates its result onto the existing
 // primary ALU write port when that port is free.
 
@@ -58,6 +58,8 @@ module cv32e40p_hamsa_issue_cluster (
   logic [31:0] rs2_base;
   logic [31:0] rs1_fwd;
   logic [31:0] rs2_fwd;
+  logic rs1_forwarded;
+  logic rs2_forwarded;
 
   logic issue2_ready;
   logic issue2_illegal;
@@ -89,40 +91,27 @@ module cv32e40p_hamsa_issue_cluster (
   assign rs1_base = (inst2_rs1 == 5'd0) ? 32'd0 : rf_q[inst2_rs1];
   assign rs2_base = (inst2_rs2 == 5'd0) ? 32'd0 : rf_q[inst2_rs2];
 
-  cv32e40p_dual_issue_forwarding fwd_rs1_i (
-      .src_addr_i       (inst2_rs1),
-      .src_data_i       (rs1_base),
-      .primary_ex_we_i  (primary_ex_we_i),
-      .primary_ex_addr_i(primary_ex_addr_i[4:0]),
-      .primary_ex_data_i(primary_ex_data_i),
-      .issue2_ex_we_i   (1'b0),
-      .issue2_ex_addr_i ('0),
-      .issue2_ex_data_i ('0),
-      .primary_wb_we_i  (primary_wb_we_i),
-      .primary_wb_addr_i(primary_wb_addr_i[4:0]),
-      .primary_wb_data_i(primary_wb_data_i),
-      .issue2_wb_we_i   (issue2_wb_valid),
-      .issue2_wb_addr_i (issue2_wb_rd),
-      .issue2_wb_data_i (issue2_wb_data),
-      .src_data_o       (rs1_fwd)
-  );
-
-  cv32e40p_dual_issue_forwarding fwd_rs2_i (
-      .src_addr_i       (inst2_rs2),
-      .src_data_i       (rs2_base),
-      .primary_ex_we_i  (primary_ex_we_i),
-      .primary_ex_addr_i(primary_ex_addr_i[4:0]),
-      .primary_ex_data_i(primary_ex_data_i),
-      .issue2_ex_we_i   (1'b0),
-      .issue2_ex_addr_i ('0),
-      .issue2_ex_data_i ('0),
-      .primary_wb_we_i  (primary_wb_we_i),
-      .primary_wb_addr_i(primary_wb_addr_i[4:0]),
-      .primary_wb_data_i(primary_wb_data_i),
-      .issue2_wb_we_i   (issue2_wb_valid),
-      .issue2_wb_addr_i (issue2_wb_rd),
-      .issue2_wb_data_i (issue2_wb_data),
-      .src_data_o       (rs2_fwd)
+  cv32e40p_dual_issue_forwarding forwarding_i (
+      .rs1_i             (inst2_rs1),
+      .rs2_i             (inst2_rs2),
+      .rs1_rf_i          (rs1_base),
+      .rs2_rf_i          (rs2_base),
+      .ex1_we_i          (primary_ex_we_i),
+      .ex1_rd_i          (primary_ex_addr_i[4:0]),
+      .ex1_data_i        (primary_ex_data_i),
+      .ex2_we_i          (1'b0),
+      .ex2_rd_i          ('0),
+      .ex2_data_i        ('0),
+      .wb1_we_i          (primary_wb_we_i),
+      .wb1_rd_i          (primary_wb_addr_i[4:0]),
+      .wb1_data_i        (primary_wb_data_i),
+      .wb2_we_i          (issue2_wb_valid),
+      .wb2_rd_i          (issue2_wb_rd),
+      .wb2_data_i        (issue2_wb_data),
+      .rs1_o             (rs1_fwd),
+      .rs2_o             (rs2_fwd),
+      .rs1_forwarded_o   (rs1_forwarded),
+      .rs2_forwarded_o   (rs2_forwarded)
   );
 
   assign issue2_accept = pair_fire_i && issue2_valid && issue2_ready;
@@ -185,6 +174,7 @@ module cv32e40p_hamsa_issue_cluster (
   logic unused_status;
   assign unused_status = issue1_valid ^ raw_hazard ^ waw_hazard ^
                          issue2_unsupported ^ issue1_serializing ^
-                         inst1_rd[0] ^ inst2_rd[0];
+                         inst1_rd[0] ^ inst2_rd[0] ^
+                         rs1_forwarded ^ rs2_forwarded;
 
 endmodule
