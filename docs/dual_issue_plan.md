@@ -1,102 +1,174 @@
 # CV32E40P asymmetric dual-issue development
 
-This branch develops a HAMSA-DI-inspired asymmetric dual-issue extension while
-preserving CV32E40P single-issue behavior as the architectural reference.
+This branch implements a HAMSA-DI-inspired asymmetric dual-issue extension while
+preserving the original CV32E40P implementation on `CV32e40p-original` as the
+architectural reference.
 
-## Design rule
+## Architectural rule
 
-Issue 1 remains the full CV32E40P path. Issue 2 is opportunistic and is added
-incrementally. A failure to issue instruction 2 must never prevent instruction 1
-from making forward progress.
+Issue 1 remains the full CV32E40P pipeline. Issue 2 is younger and opportunistic.
+Failure to issue instruction 2 must never stall or corrupt instruction 1. Issue 2
+may execute speculatively, but it cannot become architecturally visible until the
+older primary instruction is commit-safe.
 
-## Current implementation status
+## Implemented RTL
 
-Implemented as synthesizable building blocks:
+### Issue / execution
 
-- `cv32e40p_dual_issue_idu.sv`: partial decode, Issue2 eligibility, RAW/WAW checks,
-  and conservative serialization.
-- `cv32e40p_issue2_decoder.sv`: restricted RV32I OP/OP-IMM decoder for Issue2.
-- `cv32e40p_issue2_ex.sv`: scalar secondary ALU lane with one-entry writeback
-  buffering and kill support.
-- `cv32e40p_issue2_lane.sv`: composed Issue2 decoder + execution lane.
-- `cv32e40p_register_file_5r3w.sv`: experimental 5-read/3-write FF register file.
-- `cv32e40p_dual_issue_pair_unit.sv`: integration scaffold joining the IDU,
-  Issue2 lane, and 5R3W RF while keeping Issue1 RF semantics unchanged.
-- Directed unit tests for the IDU, Issue2 lane, and the integrated pair unit.
+- `cv32e40p_dual_issue_idu.sv`
+  - partial decode for pairing decisions;
+  - same-cycle RAW and WAW checks;
+  - conservative serialization of unknown/custom Issue1 classes;
+  - optional speculation behind conditional branches;
+  - Issue2 support for scalar RV32I OP/OP-IMM and scalar RV32M MUL.
+- `cv32e40p_issue2_decoder.sv`
+  - restricted Issue2 decoder;
+  - integer ALU operations plus MUL;
+  - DIV/REM/MULH-family, memory, CSR, jumps and custom operations remain excluded.
+- `cv32e40p_issue2_ex.sv` / `cv32e40p_issue2_lane.sv`
+  - secondary scalar ALU/MUL execution;
+  - one-entry result buffer;
+  - kill support for branch/exception/debug recovery;
+  - backpressure until a safe writeback opportunity exists.
+- `cv32e40p_dual_issue_forwarding.sv`
+  - EX1/EX2/WB1/WB2 forwarding helper.
+- `cv32e40p_dual_issue_recovery.sv`
+  - kills younger Issue2 state on a taken primary branch or other redirect.
 
-The new pair unit now establishes the intended ID/RF/Issue2 boundary: Issue1 uses
-RF read ports A/B/C and write ports A/B, while Issue2 uses read ports D/E and write
-port C. The next invasive step is frontend/core wiring so that a real sequential
-instruction pair reaches this boundary.
+### Register file / writeback
 
-## Milestones
+- `cv32e40p_register_file_5r3w.sv`
+  - experimental 5-read/3-write flip-flop RF for PPA comparison.
+- `cv32e40p_dual_issue_pair_unit.sv`
+  - standalone 5R3W integration scaffold.
+- `cv32e40p_dual_issue_integration_bridge.sv`
+  - conservative sidecar integration using a mirrored integer RF.
+- `cv32e40p_hamsa_issue_cluster.sv`
+  - current primary/secondary integration block;
+  - mirrored architectural integer state for Issue2 operand reads;
+  - cross-lane forwarding;
+  - primary write-port priority;
+  - Issue2 result is held until `primary_commit_safe_i` is asserted, preserving
+    in-order architectural visibility for older loads/stores/faulting operations.
 
-1. **IDU / partial decode — implemented**
-   - Identify Issue2-safe RV32 integer ALU instructions.
-   - Detect same-cycle Issue1 -> Issue2 RAW hazards.
-   - Detect WAW conflicts.
-   - Serialize branches/jumps/system/fence operations until speculation exists.
-   - Keep memory operations on Issue1 only.
+### Frontend
 
-2. **Two-instruction frontend prototype — next integration target**
-   - Start with fixed-width 32-bit instructions (PC and PC+4).
-   - Expose instruction-2 valid/data/PC to ID.
-   - Keep compressed-instruction dual fetch disabled initially.
-   - Because the existing external instruction interface is only 32 bits wide,
-     the first core prototype will use a small internal pair buffer to validate
-     correctness before widening the external fetch path/L0 frontend.
+- `cv32e40p_dual_fetch_pair_buffer.sv`
+  - lossless pair assembly for the existing 32-bit frontend;
+  - if Issue2 is rejected, instruction 2 is replayed as the next Issue1.
+- `cv32e40p_l0_icache_128.sv`
+  - 8-line x 128-bit direct-mapped L0 prototype.
+- `cv32e40p_dual_decode_128.sv`
+  - RV32C-aware extraction/decompression of up to two sequential instructions
+    from a 128-bit cache line.
+- `cv32e40p_hamsa_frontend.sv`
+  - integrated 128-bit L0 + RV32C dual-decode frontend with redirect support.
+- `cv32e40p_hamsa_dual_issue_top.sv`
+  - integration adapter combining the 128-bit frontend, recovery logic and
+    secondary issue cluster around an external/full-featured primary lane.
 
-3. **Secondary decode and ALU execution lane — implemented**
-   - Restricted RV32I OP/OP-IMM decode is implemented.
-   - Scalar Issue2 ALU path is implemented using the existing CV32E40P ALU.
-   - One-entry Issue2 writeback state and kill input are implemented.
-   - Pair-unit-level RF wiring is implemented; top-level core wiring is pending.
+### Core integration path
 
-4. **Register-file / writeback extension — integration scaffold implemented**
-   - A straightforward 5R3W flip-flop register file is available for PPA study.
-   - W3 > W2 > W1 deterministic write priority is used; IDU WAW filtering should
-     make normal dual-issue W3/W1 collisions impossible.
-   - The pair unit connects Issue2 writeback to W3 while preserving baseline
-     Issue1 W1/W2 semantics.
-   - Lower-cost alternatives should be evaluated against this baseline.
+`util/gen_hamsa_core.py` deterministically generates
+`rtl/cv32e40p_core_hamsa.sv` from the untouched `rtl/cv32e40p_core.sv`.
+It performs checked substitutions and fails if an expected source anchor changes.
+The generated bring-up core currently uses the original 32-bit fetch interface
+plus the lossless pair buffer, and connects the secondary issue cluster at the
+ID/EX/RF boundary. This avoids maintaining a large divergent fork while the
+integration is validated.
 
-5. **Cross forwarding and pipeline hazards**
-   - EX1 -> Issue2, EX2 -> Issue1, EX2 -> Issue2, and WB forwarding as needed.
-   - Verify load-use, multi-cycle and stall interactions.
+The separate `cv32e40p_hamsa_frontend.sv` / `cv32e40p_hamsa_dual_issue_top.sv`
+path represents the final 128-bit-L0 organization and requires a widened refill
+or instruction-cache interface at SoC integration level.
 
-6. **Branch speculation / kill**
-   - Permit a safe Issue2 instruction behind a conditional Issue1 branch.
-   - Kill Issue2 architectural writeback when the branch redirects execution.
-   - The Issue2 execution block already exposes `kill_i` for this purpose.
+## Pairing policy
 
-7. **Xpulp / DSP / AI-oriented secondary execution**
-   - Add selected SIMD/DSP operations based on area/performance benefit.
-   - Keep three-source and memory-heavy operations restricted until explicitly supported.
+Currently allowed on Issue2:
 
-8. **RV32C-aware dual fetch and L0 frontend**
-   - Identify two variable-width instructions across fetch boundaries.
-   - Add wider fetch / small L0 instruction storage and prefetch policy.
+- ADD/SUB, shifts, compares and logical RV32I OP instructions;
+- OP-IMM arithmetic/logical/shift instructions;
+- scalar RV32M MUL;
+- an independent Issue2 ALU/MUL may pair behind an Issue1 load/store;
+- an independent Issue2 instruction may be issued speculatively behind an
+  Issue1 conditional branch in `cv32e40p_hamsa_issue_cluster`.
 
-## Current pairing policy
+Currently excluded on Issue2:
 
-Allowed examples:
+- loads/stores;
+- branches/jumps;
+- CSR/system/fence instructions;
+- DIV/REM and MULH-family operations;
+- Xpulp custom/SIMD/DSP instructions not yet explicitly decoded;
+- three-source operations.
 
-- ALU -> independent ALU
-- ALU -> independent OP-IMM
-- load/store on Issue1 -> independent ALU on Issue2
+RAW and WAW conflicts always block Issue2. Unknown/custom Issue1 instruction
+classes serialize conservatively.
 
-Blocked examples:
+## Ordering and recovery
 
-- Issue1 rd == Issue2 rs1/rs2 (RAW)
-- Issue1 rd == Issue2 rd (WAW)
-- memory operation on Issue2
-- MUL/DIV on Issue2
-- branch/jump/system/fence on Issue1
-- unsupported/custom operation on Issue2
+A younger Issue2 result is buffered after execution and is released only when
+`primary_commit_safe_i` indicates the older Issue1 instruction has completed
+without a fault. A primary ALU write has priority over the Issue2 write port.
+Taken branches and other redirects kill any buffered younger result before it can
+retire. This allows branch speculation without violating in-order architectural
+state.
 
-## Verification principle
+## Verification assets
 
-At every milestone, single-issue execution remains the golden fallback. Directed
-pairing tests are added before enabling a new instruction class. Full core
-regression and RISC-V compliance testing are required before claiming integrated
-milestones complete.
+Directed tests currently include:
+
+- IDU legality / RAW / WAW / MUL / conservative serialization;
+- Issue2 ALU and MUL execution plus kill behavior;
+- pair-buffer replay and metadata preservation;
+- 128-bit frontend extraction and redirect behavior;
+- issue-cluster commit gating, RAW blocking, speculative branch issue and kill;
+- standalone pair-unit integration.
+
+`.github/workflows/hamsa-dual-issue.yml` contains Icarus-based smoke tests and
+also runs `util/gen_hamsa_core.py` to ensure the generated-core integration
+anchors remain valid.
+
+**Important:** presence of the tests and workflow is not equivalent to a passing
+full-core regression. The branch should not be called production-verified until
+CI/toolchain execution has actually completed, the generated core elaborates in
+the project-supported simulator, and architectural regressions pass.
+
+## Performance instrumentation
+
+`cv32e40p_hamsa_perf_counters.sv` provides non-architectural 64-bit counters for:
+
+- cycles;
+- Issue1 retired instructions;
+- Issue2 issued / retired / blocked / killed instructions;
+- L0 lookups and hits.
+
+These are kept separate from the privileged CSR map so performance studies can
+be performed without changing software-visible architecture during bring-up.
+
+## Remaining validation / research tasks
+
+1. Run full project-supported compile/elaboration for `cv32e40p_core_hamsa`.
+2. Run CV32E40P regression and RISC-V architectural/compliance tests with dual
+   issue disabled/enabled and compare architectural state.
+3. Stress load-use, stores, LSU errors, interrupts, debug entry, FENCE.I, WFI,
+   APU/FPU and multicycle interactions.
+4. Integrate the 128-bit L0 refill path with the selected SoC instruction-memory
+   protocol and test cross-line RV32C/32-bit instruction cases.
+5. Compare the native 5R3W RF against the mirrored-RF bring-up implementation for
+   area, timing and energy; select the final physical implementation.
+6. Add selected Xpulp/SIMD/DSP operations only after their dependency semantics
+   are represented in the partial decoder.
+7. Run CoreMark/Embench and collect IPC, pair rate, Issue2-block reasons, L0 hit
+   rate, area, Fmax and energy versus `CV32e40p-original`.
+8. FPGA and/or ASIC synthesis and timing closure before claiming PPA results.
+
+## Suggested bring-up commands
+
+```sh
+python3 util/gen_hamsa_core.py
+# then compile the generated rtl/cv32e40p_core_hamsa.sv with the normal project
+# package/include/source set plus the HAMSA RTL listed in Bender.yml.
+```
+
+The preserved reference branch remains `CV32e40p-original`; HAMSA development
+stays isolated on `feature/hamsa-dual-issue`.
