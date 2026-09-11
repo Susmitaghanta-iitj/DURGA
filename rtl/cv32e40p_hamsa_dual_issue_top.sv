@@ -129,7 +129,11 @@ module cv32e40p_hamsa_dual_issue_top #(
   assign issue1_illegal_c_o  = inst1_illegal;
   assign pair_fire           = pair_valid && issue1_ready_i;
 
-  cv32e40p_hamsa_issue_cluster issue_cluster_i (
+  // This block-level integration top uses the mirrored-RF mode. Native 5R3W
+  // integration is exercised by cv32e40p_core_hamsa_h2_5r3w.
+  cv32e40p_hamsa_issue_cluster #(
+      .NATIVE_5R3W(1'b0)
+  ) issue_cluster_i (
       .clk                        (clk),
       .rst_n                      (rst_n),
       .flush_i                    (recovery_flush || recovery_kill),
@@ -148,6 +152,13 @@ module cv32e40p_hamsa_dual_issue_top #(
       .primary_ex_we_i            (primary_ex_we_i),
       .primary_ex_addr_i          (primary_ex_addr_i),
       .primary_ex_data_i          (primary_ex_data_i),
+      .issue2_rs1_addr_o          (),
+      .issue2_rs2_addr_o          (),
+      .issue2_rs1_data_i          (32'd0),
+      .issue2_rs2_data_i          (32'd0),
+      .issue2_rf_we_o             (),
+      .issue2_rf_addr_o           (),
+      .issue2_rf_data_o           (),
       .arb_alu_we_o               (arb_alu_we_o),
       .arb_alu_addr_o             (arb_alu_addr_o),
       .arb_alu_data_o             (arb_alu_data_o),
