@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Run a CV32E40P example-testbench firmware in B0 or HAMSA mode.
+"""Run a CV32E40P example-testbench firmware for B0/H0/H1 evaluation.
 
-B0 uses an evaluation-only generated top that leaves the baseline RTL untouched
-but emits the same HAMSA_METRIC log contract as H1. H0 and H2 remain reserved
-until their explicit architectural switches/interfaces are complete.
+B0: untouched baseline core with evaluation-only testbench counters.
+H0: HAMSA integration present, Issue2 disabled; Inst2 always replays on Issue1.
+H1: HAMSA backend dual issue enabled with the 32-bit bring-up frontend.
+H2 remains reserved until the real 128-bit L0 refill interface is wired.
 """
 
 from __future__ import annotations
@@ -33,22 +34,29 @@ def main() -> None:
     if not fw.exists():
         raise SystemExit(f"firmware not found: {fw}")
 
-    if args.configuration in {"H0", "H2"}:
+    if args.configuration == "H2":
         raise SystemExit(
-            f"{args.configuration} is reserved but not executable yet: "
-            "H0 needs an Issue2-disable build switch and H2 needs the 128-bit "
-            "L0 memory interface wired into the SoC/testbench. Use B0 or H1."
+            "H2 is reserved but not executable yet: the real 128-bit L0 refill "
+            "interface still needs to be wired into the SoC/testbench."
         )
 
-    if args.configuration == "H1":
-        subprocess.run(["python3", str(ROOT / "util" / "gen_hamsa_sim.py")],
-                       cwd=ROOT, check=True)
+    if args.configuration in {"H0", "H1"}:
+        enable_issue2 = "1" if args.configuration == "H1" else "0"
+        subprocess.run(
+            ["python3", str(ROOT / "util" / "gen_hamsa_sim.py"),
+             "--enable-issue2", enable_issue2],
+            cwd=ROOT,
+            check=True,
+        )
         manifest = str(ROOT / "cv32e40p_manifest_hamsa.flist")
         tb_top = "tb_top_hamsa.sv"
         vopt_top = "tb_top_hamsa_vopt"
     else:
-        subprocess.run(["python3", str(ROOT / "util" / "gen_baseline_eval_tb.py")],
-                       cwd=ROOT, check=True)
+        subprocess.run(
+            ["python3", str(ROOT / "util" / "gen_baseline_eval_tb.py")],
+            cwd=ROOT,
+            check=True,
+        )
         manifest = str(ROOT / "cv32e40p_manifest.flist")
         tb_top = "tb_top_eval.sv"
         vopt_top = "tb_top_eval_vopt"
