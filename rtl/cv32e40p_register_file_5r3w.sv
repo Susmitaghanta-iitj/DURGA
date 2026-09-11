@@ -1,9 +1,9 @@
 // Copyright 2026
 // Licensed under the Solderpad Hardware License, Version 2.0.
 //
-// Experimental 5-read/3-write flip-flop register file for the asymmetric
-// dual-issue CV32E40P prototype. This is intentionally kept separate from the
-// golden cv32e40p_register_file until the dual-issue path is integrated.
+// 5-read/3-write flip-flop register file for the asymmetric dual-issue
+// CV32E40P/HAMSA prototype. Ports A/B/C and writes A/B are compatible with the
+// original ID-stage RF. Ports D/E and write C are the secondary-issue additions.
 
 module cv32e40p_register_file_5r3w #(
     parameter ADDR_WIDTH = 6,
@@ -13,6 +13,7 @@ module cv32e40p_register_file_5r3w #(
 ) (
     input logic clk,
     input logic rst_n,
+    input logic scan_cg_en_i,
 
     input logic [ADDR_WIDTH-1:0] raddr_a_i,
     output logic [DATA_WIDTH-1:0] rdata_a_o,
@@ -62,9 +63,8 @@ module cv32e40p_register_file_5r3w #(
     end else begin
       mem[0] <= '0;
 
-      // Deterministic priority matches the role of the new Issue2 write port:
-      // W3 > W2 > W1. The IDU prevents same-cycle architectural WAW pairs,
-      // so priority should only matter for exceptional/control interactions.
+      // W3 > W2 > W1 deterministic priority. Normal dual-issue operation has
+      // no architectural WAW pair because the IDU rejects it.
       for (i = 1; i < NUM_WORDS; i++) begin
         if (we_c_i && !waddr_c_i[5] && (waddr_c_i[4:0] == i[4:0]))
           mem[i] <= wdata_c_i;
@@ -97,5 +97,11 @@ module cv32e40p_register_file_5r3w #(
       always_comb mem_fp = '0;
     end
   endgenerate
+
+  // This FF implementation has no internal clock gates, so scan enable is
+  // intentionally unused while keeping interface compatibility with the
+  // baseline register file.
+  logic unused_scan;
+  assign unused_scan = scan_cg_en_i;
 
 endmodule
