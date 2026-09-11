@@ -43,7 +43,16 @@ module cv32e40p_hamsa_issue_cluster (
 
     output logic        inst2_consumed_o,
     output logic        issue2_pending_o,
-    output logic        issue2_blocked_o
+    output logic        issue2_blocked_o,
+
+    // Mutually non-exclusive block-reason observability for evaluation.
+    // Count these only when issue2_blocked_o is asserted.
+    output logic        issue2_block_raw_o,
+    output logic        issue2_block_waw_o,
+    output logic        issue2_block_unsupported_o,
+    output logic        issue2_block_serializing_o,
+    output logic        issue2_block_busy_o,
+    output logic        issue2_block_decode_o
 );
 
   logic issue1_valid;
@@ -179,10 +188,15 @@ module cv32e40p_hamsa_issue_cluster (
   assign issue2_blocked_o  = inst1_valid_i && inst2_valid_i &&
                              (!issue2_valid || !issue2_ready || issue2_illegal);
 
+  assign issue2_block_raw_o         = issue2_blocked_o && raw_hazard;
+  assign issue2_block_waw_o         = issue2_blocked_o && waw_hazard;
+  assign issue2_block_unsupported_o = issue2_blocked_o && issue2_unsupported;
+  assign issue2_block_serializing_o = issue2_blocked_o && issue1_serializing;
+  assign issue2_block_busy_o        = issue2_blocked_o && !issue2_ready;
+  assign issue2_block_decode_o      = issue2_blocked_o && issue2_illegal;
+
   logic unused_status;
-  assign unused_status = issue1_valid ^ raw_hazard ^ waw_hazard ^
-                         issue2_unsupported ^ issue1_serializing ^
-                         inst1_rd[0] ^ inst2_rd[0] ^
+  assign unused_status = issue1_valid ^ inst1_rd[0] ^ inst2_rd[0] ^
                          rs1_forwarded ^ rs2_forwarded;
 
 endmodule
