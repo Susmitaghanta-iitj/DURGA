@@ -35,6 +35,7 @@ sources:
     - rtl/cv32e40p_decoder.sv
     - rtl/cv32e40p_dual_issue_idu.sv
     - rtl/cv32e40p_issue2_decoder.sv
+    - rtl/cv32e40p_issue2_lane.sv
     - rtl/cv32e40p_issue2_ex.sv
     - rtl/cv32e40p_int_controller.sv
     - rtl/cv32e40p_ex_stage.sv
