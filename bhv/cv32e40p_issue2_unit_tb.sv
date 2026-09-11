@@ -94,35 +94,34 @@ module cv32e40p_issue2_unit_tb;
     repeat (3) @(posedge clk);
     rst_n = 1'b1;
 
-    // add x5, x1, x2 => 12 + 7 = 19
     issue_and_check(enc_r(7'b0000000, 5'd2, 5'd1, 3'b000, 5'd5),
                     32'd12, 32'd7, 5'd5, 32'd19);
 
-    // sub x6, x1, x2 => 12 - 7 = 5
     issue_and_check(enc_r(7'b0100000, 5'd2, 5'd1, 3'b000, 5'd6),
                     32'd12, 32'd7, 5'd6, 32'd5);
 
-    // and x7, x1, x2
     issue_and_check(enc_r(7'b0000000, 5'd2, 5'd1, 3'b111, 5'd7),
                     32'hF0F0_AA55, 32'h0FF0_0F0F, 5'd7, 32'h00F0_0A05);
 
-    // addi x8, x1, -3 => 12 - 3 = 9
     issue_and_check(enc_i(12'hFFD, 5'd1, 3'b000, 5'd8),
                     32'd12, 32'd0, 5'd8, 32'd9);
 
-    // slli x9, x1, 4
     issue_and_check(enc_i({7'b0000000, 5'd4}, 5'd1, 3'b001, 5'd9),
                     32'h0000_0011, 32'd0, 5'd9, 32'h0000_0110);
 
-    // MUL encoding is intentionally illegal on Issue2.
+    // Compact RV32M subset: MUL is legal on Issue2.
+    issue_and_check(enc_r(7'b0000001, 5'd2, 5'd1, 3'b000, 5'd10),
+                    32'd3, 32'd4, 5'd10, 32'd12);
+
+    // DIV (funct3=100) remains unsupported on Issue2.
     while (!issue_ready) @(posedge clk);
-    instr       <= enc_r(7'b0000001, 5'd2, 5'd1, 3'b000, 5'd10);
-    rs1_data    <= 32'd3;
-    rs2_data    <= 32'd4;
+    instr       <= enc_r(7'b0000001, 5'd2, 5'd1, 3'b100, 5'd12);
+    rs1_data    <= 32'd12;
+    rs2_data    <= 32'd3;
     issue_valid <= 1'b1;
     #1;
     if (!decode_illegal) begin
-      $error("MUL must be rejected by Issue2 decoder");
+      $error("DIV must remain rejected by Issue2 decoder");
       $fatal(1);
     end
     @(posedge clk);
