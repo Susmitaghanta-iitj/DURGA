@@ -40,6 +40,7 @@ sources:
     - rtl/cv32e40p_issue2_ex.sv
     - rtl/cv32e40p_register_file_5r3w.sv
     - rtl/cv32e40p_dual_issue_pair_unit.sv
+    - rtl/cv32e40p_dual_issue_integration_bridge.sv
     - rtl/cv32e40p_int_controller.sv
     - rtl/cv32e40p_ex_stage.sv
     - rtl/cv32e40p_hwloop_controller.sv
