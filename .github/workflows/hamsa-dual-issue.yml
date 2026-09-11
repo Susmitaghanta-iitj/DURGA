@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [CV32e40p-original, master]
 
+concurrency:
+  group: hamsa-dual-issue-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -26,8 +30,9 @@ jobs:
             util/gen_hamsa_core_h2.py util/gen_hamsa_sim_h2.py \
             util/gen_baseline_eval_tb.py util/gen_hamsa_sim.py \
             evaluation/run_example_vsim.py evaluation/run_full_matrix.py \
-            evaluation/run_benchmark_matrix.py evaluation/compute_metrics.py \
-            evaluation/gen_microbench.py evaluation/plot_results.py
+            evaluation/run_benchmark_matrix.py evaluation/run_arch_regression.py \
+            evaluation/compute_metrics.py evaluation/gen_microbench.py \
+            evaluation/plot_results.py
           python3 util/gen_hamsa_sim_h2.py --native 0
           test -s rtl/cv32e40p_core_hamsa_h2.sv
           test -s rtl/cv32e40p_wrapper_h2_32.sv
@@ -103,21 +108,25 @@ jobs:
             bhv/cv32e40p_hamsa_refill_32to128_tb.sv
           vvp /tmp/refill128
 
-      - name: Elaborate native 128-bit refill engine
+      - name: Compile and run native 128-bit refill test
         run: |
-          iverilog -g2012 -s cv32e40p_hamsa_refill_native128 -o /tmp/refill_native \
-            rtl/cv32e40p_hamsa_refill_native128.sv
+          iverilog -g2012 -o /tmp/refill_native \
+            rtl/cv32e40p_hamsa_refill_native128.sv \
+            bhv/cv32e40p_hamsa_refill_native128_tb.sv
+          vvp /tmp/refill_native
 
-      - name: Elaborate H2 full-core IF stage
+      - name: Compile and run H2 IF replay/redirect test
         run: |
-          iverilog -g2012 -I rtl/include -s cv32e40p_hamsa_if_stage -o /tmp/h2_if \
+          iverilog -g2012 -I rtl/include -o /tmp/h2_if_tb \
             rtl/include/cv32e40p_pkg.sv \
             rtl/cv32e40p_compressed_decoder.sv \
             rtl/cv32e40p_dual_decode_128.sv \
             rtl/cv32e40p_hamsa_frontend.sv \
             rtl/cv32e40p_hamsa_refill_32to128.sv \
             rtl/cv32e40p_hamsa_refill_native128.sv \
-            rtl/cv32e40p_hamsa_if_stage.sv
+            rtl/cv32e40p_hamsa_if_stage.sv \
+            bhv/cv32e40p_hamsa_if_stage_tb.sv
+          vvp /tmp/h2_if_tb
 
       - name: Compile and run HAMSA issue-cluster test
         run: |
