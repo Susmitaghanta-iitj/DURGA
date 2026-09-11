@@ -35,7 +35,7 @@ module cv32e40p_issue2_ex
   logic [4:0]  rd_q;
   logic [31:0] result_q;
 
-  assign ready_o   = !valid_q || wb_ready_i;
+  assign ready_o    = !valid_q || wb_ready_i;
   assign mul_result = operand_a_i * operand_b_i;
 
   cv32e40p_alu alu_issue2_i (
@@ -46,7 +46,10 @@ module cv32e40p_issue2_ex
       .operand_a_i        (operand_a_i),
       .operand_b_i        (operand_b_i),
       .operand_c_i        (32'b0),
-      .vector_mode_i      (VEC_MODE32),
+      // cv32e40p_alu declares a 2-bit vector-mode input.  Scalar 32-bit mode
+      // is encoded as 2'b00; use the explicit width to avoid tool-dependent
+      // padding of the one-bit legacy VEC_MODE32 constant.
+      .vector_mode_i      (2'b00),
       .bmask_a_i          (5'b0),
       .bmask_b_i          (5'b0),
       .imm_vec_ext_i      (2'b0),
