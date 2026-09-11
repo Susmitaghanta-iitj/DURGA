@@ -82,7 +82,8 @@ These are required to interpret benchmark-level results.
 
 ## 5. Runtime metrics
 
-The branch already contains `cv32e40p_hamsa_perf_counters.sv`. Capture at least:
+The branch contains `cv32e40p_hamsa_perf_counters.sv` and the combined
+`cv32e40p_hamsa_eval_monitor.sv`. Capture at least:
 
 - cycles;
 - Issue1 retired instructions;
@@ -111,23 +112,61 @@ For benchmark comparisons also compute:
 
 ## 6. Block-reason instrumentation
 
-The current aggregate `issue2_blocked` counter is useful but insufficient for a
-paper-quality bottleneck analysis. Extend it with mutually-exclusive block-reason
-counters:
+The branch exposes the following Issue2 block causes:
 
 - RAW;
 - WAW;
 - unsupported Issue2 instruction;
 - serializing Issue1 instruction;
 - Issue2 execution/result-buffer busy;
-- primary writeback conflict;
-- redirect/flush/debug/exception;
-- frontend unavailable/no second instruction.
+- secondary decode rejection.
 
-The sum of reason counters should equal the total number of blocked pairing
-opportunities for the chosen accounting definition.
+These reason signals are intentionally **non-exclusive** in the current prototype.
+For example, one candidate may be both RAW-dependent and unsupported. Therefore the
+sum of reason counters may exceed `issue2_blocked`. For stacked figures either use
+an explicit priority classification in post-processing or label the figure as
+"fraction of blocked opportunities exhibiting each cause" rather than forcing the
+categories to sum to 100%.
 
-## 7. FPGA evaluation
+Future instrumentation should additionally separate primary writeback conflict,
+redirect/flush/debug/exception, and frontend starvation/no-second-instruction when
+those signals are available at the chosen integration boundary.
+
+## 7. Simulator log contract
+
+Benchmark testbenches should print one or more lines beginning with `HAMSA_METRIC`
+and containing whitespace-separated `key=value` tokens. Example:
+
+```text
+HAMSA_METRIC cycles=123456 issue1_retired=100000 issue2_issued=23500
+HAMSA_METRIC issue2_retired=23000 issue2_blocked=15100 issue2_killed=12
+HAMSA_METRIC block_raw=8000 block_waw=40 block_unsupported=4200
+HAMSA_METRIC block_serializing=2800 block_busy=900 block_decode=0
+HAMSA_METRIC l0_lookups=40000 l0_hits=38600 benchmark_score=3.42
+```
+
+`evaluation/parse_hamsa_log.py` converts one simulator log into a canonical CSV
+row. `evaluation/run_benchmark_matrix.py` runs a complete B0/H0/H1/H2 matrix using
+any simulator command template that emits the same log contract.
+
+Example:
+
+```bash
+python3 evaluation/run_benchmark_matrix.py \
+  --benchmarks coremark,aha-mont64 \
+  --configs B0,H0,H1,H2 \
+  --command './run_sim.sh {configuration} {benchmark}' \
+  --out evaluation/results/raw.csv
+
+python3 evaluation/compute_metrics.py \
+  evaluation/results/raw.csv \
+  --output evaluation/results/derived.csv
+```
+
+The runner stores individual logs in `evaluation/results/logs/` by default and
+records the current git SHA automatically.
+
+## 8. FPGA evaluation
 
 Use the same target device, constraints and memory wrapper for B0 and HAMSA.
 Report:
@@ -143,7 +182,7 @@ Report:
 Do not compare synthesis-only Fmax for one design against post-route Fmax for the
 other.
 
-## 8. ASIC evaluation
+## 9. ASIC evaluation
 
 For both designs use identical:
 
@@ -166,7 +205,7 @@ For energy:
 where execution time is derived from measured benchmark cycles and the achieved or
 fixed comparison frequency.
 
-## 9. Required ablations
+## 10. Required ablations
 
 At minimum evaluate:
 
@@ -179,20 +218,20 @@ At minimum evaluate:
 
 These distinguish where performance and hardware cost come from.
 
-## 10. Recommended result tables/figures
+## 11. Recommended result tables/figures
 
 Prepare:
 
 - benchmark speedup bar chart;
 - IPC and Issue2 pair-utilization chart;
-- Issue2 block-reason stacked chart;
+- Issue2 block-reason chart;
 - L0 hit-rate chart;
 - area breakdown;
 - power/energy comparison;
 - performance-versus-area and performance-versus-energy scatter plots;
 - ablation table.
 
-## 11. Reproducibility rules
+## 12. Reproducibility rules
 
 Record for every result:
 
@@ -208,7 +247,7 @@ Record for every result:
 Never combine numbers produced from different compiler flags or memory settings in
 one direct comparison.
 
-## 12. Result collection
+## 13. Result collection
 
 Use `evaluation/results_template.csv` as the canonical raw-results schema and
 `evaluation/compute_metrics.py` to derive IPC, utilization, hit rate and speedup.
