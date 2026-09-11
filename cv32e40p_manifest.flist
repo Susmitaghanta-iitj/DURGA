@@ -34,6 +34,7 @@ ${DESIGN_RTL_DIR}/include/cv32e40p_pkg.sv
 ${DESIGN_RTL_DIR}/cv32e40p_if_stage.sv
 ${DESIGN_RTL_DIR}/cv32e40p_cs_registers.sv
 ${DESIGN_RTL_DIR}/cv32e40p_register_file_ff.sv
+${DESIGN_RTL_DIR}/cv32e40p_register_file_5r3w.sv
 ${DESIGN_RTL_DIR}/cv32e40p_load_store_unit.sv
 ${DESIGN_RTL_DIR}/cv32e40p_dual_issue_idu.sv
 ${DESIGN_RTL_DIR}/cv32e40p_issue2_decoder.sv
