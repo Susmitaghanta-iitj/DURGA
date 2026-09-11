@@ -41,6 +41,7 @@ ${DESIGN_RTL_DIR}/cv32e40p_dual_fetch_pair_buffer.sv
 ${DESIGN_RTL_DIR}/cv32e40p_issue2_decoder.sv
 ${DESIGN_RTL_DIR}/cv32e40p_issue2_lane.sv
 ${DESIGN_RTL_DIR}/cv32e40p_dual_issue_pair_unit.sv
+${DESIGN_RTL_DIR}/cv32e40p_dual_issue_integration_bridge.sv
 ${DESIGN_RTL_DIR}/cv32e40p_id_stage.sv
 ${DESIGN_RTL_DIR}/cv32e40p_aligner.sv
 ${DESIGN_RTL_DIR}/cv32e40p_decoder.sv
