@@ -114,10 +114,23 @@ module cv32e40p_dual_fetch_pair_buffer_tb;
     @(posedge clk);
     out_ready <= 1'b0;
 
-    // Compressed/fault metadata is preserved on serialized instructions.
+    // The discontinuous instruction is now retained as the next Issue1. Feed a
+    // compressed instruction; the retained normal instruction must retire first.
     send(32'h0000_0001, 32'h2000, 1'b1, 1'b1, 1'b0);
     while (!out_valid) @(posedge clk);
-    if (!out_inst1_compressed || !out_inst1_illegal_c || out_inst1_fetch_failed) begin
+    if (out_inst1 !== 32'h0030_0193 || out_pc1 !== 32'h1010 || out_inst2_valid) begin
+      $error("Retained discontinuous instruction did not retire before compressed input");
+      $fatal(1);
+    end
+    out_ready <= 1'b1;
+    @(posedge clk);
+    out_ready <= 1'b0;
+
+    // The retained compressed instruction must then serialize with its metadata
+    // intact.
+    while (!out_valid) @(posedge clk);
+    if (out_inst1 !== 32'h0000_0001 || out_pc1 !== 32'h2000 ||
+        !out_inst1_compressed || !out_inst1_illegal_c || out_inst1_fetch_failed) begin
       $error("Compressed/illegal metadata was not preserved");
       $fatal(1);
     end
