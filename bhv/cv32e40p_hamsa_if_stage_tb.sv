@@ -65,7 +65,7 @@ module cv32e40p_hamsa_if_stage_tb;
       .l0_lookup_o(l0_lookup), .l0_hit_o(l0_hit), .l0_refill_o(l0_refill)
   );
 
-  task automatic expect(input logic cond, input string msg);
+  task automatic check(input logic cond, input string msg);
     if (!cond) begin
       $display("FAIL: %s", msg);
       $fatal(1);
@@ -81,8 +81,8 @@ module cv32e40p_hamsa_if_stage_tb;
         @(posedge clk);
         guard++;
       end
-      expect(line_req, "timed out waiting for line request");
-      expect(line_addr == expected_addr, "unexpected native line address");
+      check(line_req, "timed out waiting for line request");
+      check(line_addr == expected_addr, "unexpected native line address");
       line_gnt = 1;
       @(posedge clk);
       line_gnt = 0;
@@ -102,18 +102,18 @@ module cv32e40p_hamsa_if_stage_tb;
         @(posedge clk);
         guard++;
       end
-      expect(instr_valid, "timed out waiting for decoded pair");
-      expect(pc_id == expected_pc1, "primary PC mismatch");
-      expect(inst2_valid, "second instruction should be valid");
-      expect(inst2_pc == expected_pc2, "secondary PC mismatch");
-      expect(!is_c && !inst2_c, "test line should contain uncompressed instructions");
+      check(instr_valid, "timed out waiting for decoded pair");
+      check(pc_id == expected_pc1, "primary PC mismatch");
+      check(inst2_valid, "second instruction should be valid");
+      check(inst2_pc == expected_pc2, "secondary PC mismatch");
+      check(!is_c && !inst2_c, "test line should contain uncompressed instructions");
     end
   endtask
 
-  localparam logic [31:0] I1 = 32'h00100093; // addi x1,x0,1
-  localparam logic [31:0] I2 = 32'h00200113; // addi x2,x0,2
-  localparam logic [31:0] I3 = 32'h00300193; // addi x3,x0,3
-  localparam logic [31:0] I4 = 32'h00400213; // addi x4,x0,4
+  localparam logic [31:0] I1 = 32'h00100093;
+  localparam logic [31:0] I2 = 32'h00200113;
+  localparam logic [31:0] I3 = 32'h00300193;
+  localparam logic [31:0] I4 = 32'h00400213;
 
   initial begin
     req = 0;
@@ -133,26 +133,21 @@ module cv32e40p_hamsa_if_stage_tb;
     rst_n = 1;
     req = 1;
 
-    // First boot-line miss/refill.
     service_line(32'h00000180, {I4, I3, I2, I1});
     wait_pair(32'h00000180, 32'h00000184);
-    expect(instr == I1 && inst2 == I2, "first decoded pair mismatch");
+    check(instr == I1 && inst2 == I2, "first decoded pair mismatch");
 
-    // Do not consume Inst2: after primary retirement it must replay as Issue1.
     inst2_consumed = 0;
     id_ready = 1;
     @(posedge clk);
     id_ready = 0;
     wait_pair(32'h00000184, 32'h00000188);
-    expect(instr == I2 && inst2 == I3, "replayed pair mismatch");
+    check(instr == I2 && inst2 == I3, "replayed pair mismatch");
 
-    // Consume Inst2 this time; next primary jumps over I3 to I4.
     inst2_consumed = 1;
     id_ready = 1;
     @(posedge clk);
     id_ready = 0;
-    // I4 is the last word in the line, so the decoder may not produce a second
-    // instruction; only verify primary progression.
     begin : wait_i4
       integer guard;
       guard = 0;
@@ -160,11 +155,10 @@ module cv32e40p_hamsa_if_stage_tb;
         @(posedge clk);
         guard++;
       end
-      expect(instr_valid && pc_id == 32'h0000018c, "consumed pair did not advance to I4");
-      expect(instr == I4, "I4 instruction mismatch");
+      check(instr_valid && pc_id == 32'h0000018c, "consumed pair did not advance to I4");
+      check(instr == I4, "I4 instruction mismatch");
     end
 
-    // A jump redirect must flush the current pair and request the redirected line.
     pc_mux = PC_JUMP;
     pc_set = 1;
     @(posedge clk);
@@ -173,7 +167,7 @@ module cv32e40p_hamsa_if_stage_tb;
     id_ready = 0;
     service_line(32'h00000200, {I4, I3, I2, I1});
     wait_pair(32'h00000200, 32'h00000204);
-    expect(instr == I1, "redirected primary instruction mismatch");
+    check(instr == I1, "redirected primary instruction mismatch");
 
     $display("PASS: H2 full-core IF replay/redirect behavior");
     $finish;
