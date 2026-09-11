@@ -35,6 +35,9 @@ sources:
     - rtl/cv32e40p_decoder.sv
     - rtl/cv32e40p_dual_issue_idu.sv
     - rtl/cv32e40p_dual_fetch_pair_buffer.sv
+    - rtl/cv32e40p_dual_issue_forwarding.sv
+    - rtl/cv32e40p_dual_issue_recovery.sv
+    - rtl/cv32e40p_l0_icache_128.sv
     - rtl/cv32e40p_issue2_decoder.sv
     - rtl/cv32e40p_issue2_lane.sv
     - rtl/cv32e40p_issue2_ex.sv
