@@ -12,8 +12,15 @@
 // held until primary_commit_safe_i is asserted for the older Issue1 operation.
 // This prevents a younger ALU result becoming visible before an older load/store
 // or other potentially faulting primary instruction is known to complete.
+//
+// ENABLE_ISSUE2=0 is the H0 evaluation ablation. The HAMSA frontend/pair buffer
+// remains present, but the younger instruction is never consumed by Issue2 and
+// is therefore replayed through Issue1. This isolates integration overhead from
+// actual dual-issue speedup.
 
-module cv32e40p_hamsa_issue_cluster (
+module cv32e40p_hamsa_issue_cluster #(
+    parameter bit ENABLE_ISSUE2 = 1'b1
+) (
     input logic clk,
     input logic rst_n,
 
@@ -131,8 +138,8 @@ module cv32e40p_hamsa_issue_cluster (
       .rs2_forwarded_o   (rs2_forwarded)
   );
 
-  assign issue2_accept   = pair_fire_i && issue2_valid && issue2_ready;
-  assign issue2_wb_ready = primary_commit_safe_i && !primary_alu_we_i;
+  assign issue2_accept   = ENABLE_ISSUE2 && pair_fire_i && issue2_valid && issue2_ready;
+  assign issue2_wb_ready = ENABLE_ISSUE2 && primary_commit_safe_i && !primary_alu_we_i;
 
   cv32e40p_issue2_lane issue2_lane_i (
       .clk             (clk),
@@ -141,7 +148,7 @@ module cv32e40p_hamsa_issue_cluster (
       .instr_i         (inst2_i),
       .rs1_data_i      (rs1_fwd),
       .rs2_data_i      (rs2_fwd),
-      .kill_i          (flush_i),
+      .kill_i          (flush_i || !ENABLE_ISSUE2),
       .wb_ready_i      (issue2_wb_ready),
       .issue_ready_o   (issue2_ready),
       .decode_illegal_o(issue2_illegal),
@@ -155,14 +162,14 @@ module cv32e40p_hamsa_issue_cluster (
     arb_alu_addr_o = primary_alu_addr_i;
     arb_alu_data_o = primary_alu_data_i;
 
-    if (!primary_alu_we_i && primary_commit_safe_i && issue2_wb_valid) begin
+    if (ENABLE_ISSUE2 && !primary_alu_we_i && primary_commit_safe_i && issue2_wb_valid) begin
       arb_alu_we_o   = (issue2_wb_rd != 5'd0);
       arb_alu_addr_o = {1'b0, issue2_wb_rd};
       arb_alu_data_o = issue2_wb_data;
     end
   end
 
-  assign issue2_commit = issue2_wb_valid && issue2_wb_ready &&
+  assign issue2_commit = ENABLE_ISSUE2 && issue2_wb_valid && issue2_wb_ready &&
                          (issue2_wb_rd != 5'd0);
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -184,10 +191,14 @@ module cv32e40p_hamsa_issue_cluster (
     end
   end
 
-  assign inst2_consumed_o = issue2_accept;
-  assign issue2_pending_o  = issue2_wb_valid;
-  assign issue2_retired_o  = issue2_commit;
-  assign issue2_blocked_o  = inst1_valid_i && inst2_valid_i &&
+  assign inst2_consumed_o = ENABLE_ISSUE2 && issue2_accept;
+  assign issue2_pending_o = ENABLE_ISSUE2 && issue2_wb_valid;
+  assign issue2_retired_o = ENABLE_ISSUE2 && issue2_commit;
+
+  // H0 intentionally reports no Issue2 block events: the lane is disabled by
+  // configuration rather than dynamically blocked. This keeps H0 observability
+  // from polluting the H1 bottleneck analysis.
+  assign issue2_blocked_o  = ENABLE_ISSUE2 && inst1_valid_i && inst2_valid_i &&
                              (!issue2_valid || !issue2_ready || issue2_illegal);
 
   assign issue2_block_raw_o         = issue2_blocked_o && raw_hazard;
