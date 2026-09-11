@@ -66,6 +66,7 @@ module cv32e40p_hamsa_frontend #(
   logic dec2_valid;
   logic [2:0] dec1_halfwords;
   logic [2:0] dec2_halfwords;
+  logic [3:0] total_halfwords;
   logic [31:0] dec1;
   logic [31:0] dec2;
   logic dec1_c;
@@ -93,6 +94,7 @@ module cv32e40p_hamsa_frontend #(
   assign refill_tag     = refill_addr_i[31:TAG_LSB];
   assign halfword_index = lookup_pc_i[3:1];
   assign lookup_line    = data_q[lookup_idx];
+  assign total_halfwords = {1'b0, dec1_halfwords} + {1'b0, dec2_halfwords};
 
   assign lookup_hit_o = lookup_valid_i && valid_q[lookup_idx] &&
                         (tag_q[lookup_idx] == lookup_tag);
@@ -166,7 +168,7 @@ module cv32e40p_hamsa_frontend #(
           inst2_illegal_q <= dec2_illegal;
 
           if (dec2_valid && !dec1_illegal && !dec2_illegal)
-            next_pc_q <= lookup_pc_i + {27'd0, (dec1_halfwords + dec2_halfwords), 1'b0};
+            next_pc_q <= lookup_pc_i + {27'd0, total_halfwords, 1'b0};
           else
             next_pc_q <= lookup_pc_i + {28'd0, dec1_halfwords, 1'b0};
         end
