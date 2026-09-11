@@ -4,9 +4,9 @@
 H2-32 uses cv32e40p_hamsa_if_stage with the legacy 32-bit instruction port and
 four-beat 128-bit L0 refills. H2-128 uses the same core/frontend but connects the
 native 128-bit line port directly to example_tb's mm_ram configured for a
-128-bit instruction read. The data port remains 32-bit and shared with the same
-underlying RAM, so firmware loading and benchmark completion semantics are
-unchanged.
+128-bit instruction read. The legacy instruction port remains 32 bits in both
+modes; in H2-128 it is simply tied idle. This avoids conflating bus-width
+parameters in the wrapper with the independent native line channel.
 """
 
 from __future__ import annotations
@@ -163,8 +163,7 @@ def main() -> None:
         tied = core_instr_anchor + """      .hamsa_line_req_o    (),\n      .hamsa_line_addr_o   (),\n      .hamsa_line_gnt_i    (1'b0),\n      .hamsa_line_rvalid_i (1'b0),\n      .hamsa_line_rdata_i  (128'd0),\n\n"""
         wrapper = replace_once(wrapper, core_instr_anchor, tied, "tie native ports")
 
-    wrapper_path = RTL / f"cv32e40p_wrapper_{suffix}.sv"
-    wrapper_path.write_text(wrapper)
+    (RTL / f"cv32e40p_wrapper_{suffix}.sv").write_text(wrapper)
 
     # ------------------------------------------------------------------
     # Testbench subsystem
@@ -179,7 +178,6 @@ def main() -> None:
                                   f"endmodule  // {sub_mod}")
 
     if native:
-        # Add native line signals while retaining dummy legacy instruction wires.
         decl_anchor = """  logic [INSTR_RDATA_WIDTH-1:0]       instr_rdata;\n\n"""
         decl_new = decl_anchor + """  logic                               hamsa_line_req;\n  logic                               hamsa_line_gnt;\n  logic                               hamsa_line_rvalid;\n  logic [                 31:0]       hamsa_line_addr;\n  logic [                127:0]       hamsa_line_rdata;\n\n"""
         subsystem = replace_once(subsystem, decl_anchor, decl_new, "line signal declarations")
@@ -188,7 +186,6 @@ def main() -> None:
         wrap_line = wrap_instr_anchor + """      .hamsa_line_req_o    (hamsa_line_req),\n      .hamsa_line_addr_o   (hamsa_line_addr),\n      .hamsa_line_gnt_i    (hamsa_line_gnt),\n      .hamsa_line_rvalid_i (hamsa_line_rvalid),\n      .hamsa_line_rdata_i  (hamsa_line_rdata),\n\n"""
         subsystem = replace_once(subsystem, wrap_instr_anchor, wrap_line, "wrapper line connections")
 
-        # Legacy word interface is idle in native mode.
         subsystem = subsystem.replace("\n\n  generate\n", "\n\n  assign instr_gnt = 1'b0;\n  assign instr_rvalid = 1'b0;\n  assign instr_rdata = '0;\n\n  generate\n", 1)
 
         ram_param = """  mm_ram #(\n      .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),\n      .INSTR_RDATA_WIDTH(INSTR_RDATA_WIDTH)\n"""
@@ -198,11 +195,11 @@ def main() -> None:
         ram_line = """      .instr_req_i   (hamsa_line_req),\n      .instr_addr_i  (hamsa_line_addr[RAM_ADDR_WIDTH-1:0]),\n      .instr_rdata_o (hamsa_line_rdata),\n      .instr_rvalid_o(hamsa_line_rvalid),\n      .instr_gnt_o   (hamsa_line_gnt),\n"""
         subsystem = replace_once(subsystem, ram_instr, ram_line, "native RAM line interface")
 
-    sub_path = TB / f"cv32e40p_tb_subsystem_{suffix}.sv"
-    sub_path.write_text(subsystem)
+    (TB / f"cv32e40p_tb_subsystem_{suffix}.sv").write_text(subsystem)
 
     # ------------------------------------------------------------------
-    # Testbench top + counters
+    # Testbench top + counters. Keep INSTR_RDATA_WIDTH at 32 in both modes;
+    # H2-128's independent native line path is explicitly 128 bits in subsystem.
     # ------------------------------------------------------------------
     top = (TB / "tb_top.sv").read_text()
     top_mod = f"tb_top_{suffix}"
@@ -211,14 +208,8 @@ def main() -> None:
                        f"  {sub_mod} #(\n", "top subsystem")
     top = top.replace("endmodule  // tb_top", f"endmodule  // {top_mod}")
     top = top.replace("$dumpvars(0, tb_top);", f"$dumpvars(0, {top_mod});")
-    if native:
-        top = top.replace("parameter INSTR_RDATA_WIDTH = 32,",
-                          "parameter INSTR_RDATA_WIDTH = 128,", 1)
-        top = top.replace("assert (INSTR_RDATA_WIDTH == 32)\n    else $fatal(\"invalid INSTR_RDATA_WIDTH, choose 32\");",
-                          "assert (INSTR_RDATA_WIDTH == 128)\n    else $fatal(\"invalid INSTR_RDATA_WIDTH, choose 128 for H2-128\");")
     top = inject_metrics(top)
-    top_path = TB / f"tb_top_{suffix}.sv"
-    top_path.write_text(top)
+    (TB / f"tb_top_{suffix}.sv").write_text(top)
 
     # ------------------------------------------------------------------
     # Manifest
@@ -232,8 +223,7 @@ def main() -> None:
                             "${DESIGN_RTL_DIR}/cv32e40p_wrapper.sv\n",
                             f"${{DESIGN_RTL_DIR}}/cv32e40p_wrapper_{suffix}.sv\n",
                             "manifest wrapper")
-    manifest_path = ROOT / f"cv32e40p_manifest_{suffix}.flist"
-    manifest_path.write_text(manifest)
+    (ROOT / f"cv32e40p_manifest_{suffix}.flist").write_text(manifest)
 
     print(f"generated executable {suffix} simulation files")
 
