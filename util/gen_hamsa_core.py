@@ -2,12 +2,12 @@
 """Generate a HAMSA-integrated CV32E40P top from the preserved core source.
 
 The generator avoids maintaining a 48-kB fork of cv32e40p_core.sv while the
-prototype is evolving.  It performs checked, deterministic substitutions and
-emits rtl/cv32e40p_core_hamsa.sv.  Every anchor must match exactly once; a source
+prototype is evolving. It performs checked, deterministic substitutions and
+emits rtl/cv32e40p_core_hamsa.sv. Every anchor must match exactly once; a source
 layout change therefore fails loudly instead of silently producing bad RTL.
 
 Current generated integration uses the existing 32-bit CV32E40P frontend plus
-cv32e40p_dual_fetch_pair_buffer for bring-up.  The 128-bit L0 frontend remains a
+cv32e40p_dual_fetch_pair_buffer for bring-up. The 128-bit L0 frontend remains a
 separate drop-in block for the final memory-interface widening milestone.
 """
 
@@ -146,29 +146,30 @@ def main() -> int:
   // HAMSA asymmetric secondary issue cluster
   // -------------------------------------------------------------------------
   cv32e40p_hamsa_issue_cluster hamsa_issue_cluster_i (
-      .clk               (clk),
-      .rst_n             (rst_ni),
-      .flush_i           (pc_set),
-      .pair_fire_i       (hamsa_pair_fire),
-      .inst1_valid_i     (instr_valid_id),
-      .inst1_i           (instr_rdata_id),
-      .inst2_valid_i     (hamsa_inst2_valid),
-      .inst2_i           (hamsa_inst2),
-      .primary_wb_we_i   (regfile_we_wb),
-      .primary_wb_addr_i (regfile_waddr_fw_wb_o),
-      .primary_wb_data_i (regfile_wdata),
-      .primary_alu_we_i  (regfile_alu_we_fw),
-      .primary_alu_addr_i(regfile_alu_waddr_fw),
-      .primary_alu_data_i(regfile_alu_wdata_fw),
-      .primary_ex_we_i   (regfile_alu_we_fw),
-      .primary_ex_addr_i (regfile_alu_waddr_fw),
-      .primary_ex_data_i (regfile_alu_wdata_fw),
-      .arb_alu_we_o      (hamsa_alu_we_fw),
-      .arb_alu_addr_o    (hamsa_alu_waddr_fw),
-      .arb_alu_data_o    (hamsa_alu_wdata_fw),
-      .inst2_consumed_o  (hamsa_inst2_consumed),
-      .issue2_pending_o  (hamsa_issue2_pending),
-      .issue2_blocked_o  (hamsa_issue2_blocked)
+      .clk                  (clk),
+      .rst_n                (rst_ni),
+      .flush_i              (pc_set),
+      .pair_fire_i          (hamsa_pair_fire),
+      .primary_commit_safe_i(ex_valid && !data_err_pmp),
+      .inst1_valid_i        (instr_valid_id),
+      .inst1_i              (instr_rdata_id),
+      .inst2_valid_i        (hamsa_inst2_valid),
+      .inst2_i              (hamsa_inst2),
+      .primary_wb_we_i      (regfile_we_wb),
+      .primary_wb_addr_i    (regfile_waddr_fw_wb_o),
+      .primary_wb_data_i    (regfile_wdata),
+      .primary_alu_we_i     (regfile_alu_we_fw),
+      .primary_alu_addr_i   (regfile_alu_waddr_fw),
+      .primary_alu_data_i   (regfile_alu_wdata_fw),
+      .primary_ex_we_i      (regfile_alu_we_fw),
+      .primary_ex_addr_i    (regfile_alu_waddr_fw),
+      .primary_ex_data_i    (regfile_alu_wdata_fw),
+      .arb_alu_we_o         (hamsa_alu_we_fw),
+      .arb_alu_addr_o       (hamsa_alu_waddr_fw),
+      .arb_alu_data_o       (hamsa_alu_wdata_fw),
+      .inst2_consumed_o     (hamsa_inst2_consumed),
+      .issue2_pending_o     (hamsa_issue2_pending),
+      .issue2_blocked_o     (hamsa_issue2_blocked)
   );
 
   // Keep the second PC and bring-up status visible for waveform/debug builds.
@@ -192,6 +193,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception as exc:  # loud failure is intentional for CI
+    except Exception as exc:
         print(f"gen_hamsa_core.py: ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
