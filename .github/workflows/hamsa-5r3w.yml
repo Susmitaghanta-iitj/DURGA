@@ -1,0 +1,37 @@
+name: hamsa-5r3w
+
+on:
+  push:
+    branches: [feature/hamsa-dual-issue]
+  pull_request:
+    branches: [CV32e40p-original, master]
+
+concurrency:
+  group: hamsa-5r3w-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate native 5R3W H2 core
+        run: |
+          python3 -m py_compile \
+            util/gen_hamsa_id_stage_5r3w.py \
+            util/gen_hamsa_core_h2_5r3w.py \
+            evaluation/run_ppa_matrix.py
+          python3 util/gen_hamsa_core_h2_5r3w.py
+          test -s rtl/cv32e40p_id_stage_hamsa_5r3w.sv
+          test -s rtl/cv32e40p_core_hamsa_h2_5r3w.sv
+          test -s cv32e40p_manifest_h2_5r3w.flist
+          grep -q "cv32e40p_register_file_5r3w" rtl/cv32e40p_id_stage_hamsa_5r3w.sv
+          grep -q "NATIVE_5R3W  (1'b1)" rtl/cv32e40p_core_hamsa_h2_5r3w.sv
+      - name: Install Verilator
+        run: sudo apt-get update && sudo apt-get install -y verilator
+      - name: Verilator lint native 5R3W H2 core
+        run: |
+          export DESIGN_RTL_DIR="$PWD/rtl"
+          verilator --lint-only -Wno-fatal \
+            --top-module cv32e40p_core_hamsa_h2_5r3w \
+            -f cv32e40p_manifest_h2_5r3w.flist
