@@ -9,6 +9,10 @@ layout change therefore fails loudly instead of silently producing bad RTL.
 Current generated integration uses the existing 32-bit CV32E40P frontend plus
 cv32e40p_dual_fetch_pair_buffer for bring-up. The 128-bit L0 frontend remains a
 separate drop-in block for the final memory-interface widening milestone.
+
+HAMSA_ENABLE_ISSUE2 is a generated-core parameter used for evaluation:
+  0 -> H0: HAMSA integration present, Issue2 disabled/replayed through Issue1
+  1 -> H1: backend dual issue enabled
 """
 
 from pathlib import Path
@@ -43,6 +47,14 @@ def main() -> int:
         "rename top",
     )
 
+    text = replace_once(
+        text,
+        "    parameter NUM_MHPMCOUNTERS = 1\n",
+        "    parameter NUM_MHPMCOUNTERS = 1,\n"
+        "    parameter bit HAMSA_ENABLE_ISSUE2 = 1'b1\n",
+        "HAMSA parameter",
+    )
+
     ifid_old = """  logic        instr_valid_id;\n  logic [31:0] instr_rdata_id;  // Instruction sampled inside IF stage\n  logic        is_compressed_id;\n  logic        illegal_c_insn_id;\n  logic        is_fetch_failed_id;\n"""
     ifid_new = ifid_old + """
   // HAMSA bring-up frontend wires. The original IF stage still fetches one
@@ -73,6 +85,7 @@ def main() -> int:
   logic        [                31:0]       hamsa_alu_wdata_fw;
   logic                                     hamsa_issue2_pending;
   logic                                     hamsa_issue2_blocked;
+  logic                                     hamsa_issue2_retired;
 """
     text = replace_once(text, rf_old, rf_new, "RF forwarding declarations")
 
@@ -145,7 +158,9 @@ def main() -> int:
   // -------------------------------------------------------------------------
   // HAMSA asymmetric secondary issue cluster
   // -------------------------------------------------------------------------
-  cv32e40p_hamsa_issue_cluster hamsa_issue_cluster_i (
+  cv32e40p_hamsa_issue_cluster #(
+      .ENABLE_ISSUE2(HAMSA_ENABLE_ISSUE2)
+  ) hamsa_issue_cluster_i (
       .clk                  (clk),
       .rst_n                (rst_ni),
       .flush_i              (pc_set),
@@ -169,13 +184,20 @@ def main() -> int:
       .arb_alu_data_o       (hamsa_alu_wdata_fw),
       .inst2_consumed_o     (hamsa_inst2_consumed),
       .issue2_pending_o     (hamsa_issue2_pending),
-      .issue2_blocked_o     (hamsa_issue2_blocked)
+      .issue2_retired_o     (hamsa_issue2_retired),
+      .issue2_blocked_o     (hamsa_issue2_blocked),
+      .issue2_block_raw_o         (),
+      .issue2_block_waw_o         (),
+      .issue2_block_unsupported_o (),
+      .issue2_block_serializing_o (),
+      .issue2_block_busy_o        (),
+      .issue2_block_decode_o      ()
   );
 
   // Keep the second PC and bring-up status visible for waveform/debug builds.
   logic hamsa_unused_status;
   assign hamsa_unused_status = ^hamsa_inst2_pc ^ hamsa_issue2_pending ^
-                               hamsa_issue2_blocked;
+                               hamsa_issue2_blocked ^ hamsa_issue2_retired;
 
 '''
     text = insert_before_once(
