@@ -217,7 +217,11 @@ module cv32e40p_hamsa_if_stage #(
       .next_pc_o          (pair_next_pc)
   );
 
-  assign miss_valid = lookup_valid && lookup_ready && !lookup_hit;
+  // A refill completion is registered by the L0 on the next active edge. Do
+  // not launch a duplicate miss in that one-cycle completion window, or the
+  // refill engine would become busy again before the freshly filled line can
+  // be looked up.
+  assign miss_valid = lookup_valid && lookup_ready && !lookup_hit && !refill_valid;
 
   generate
     if (!NATIVE_128_REFILL) begin : gen_refill32
