@@ -11,6 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Generate integrated HAMSA core
+        run: |
+          python3 util/gen_hamsa_core.py
+          test -s rtl/cv32e40p_core_hamsa.sv
+          grep -q "module cv32e40p_core_hamsa" rtl/cv32e40p_core_hamsa.sv
+          grep -q "hamsa_pair_buffer_i" rtl/cv32e40p_core_hamsa.sv
+          grep -q "hamsa_issue_cluster_i" rtl/cv32e40p_core_hamsa.sv
       - name: Install Icarus Verilog
         run: sudo apt-get update && sudo apt-get install -y iverilog
       - name: Compile and run Issue Decision Unit test
