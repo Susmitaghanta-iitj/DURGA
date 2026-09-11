@@ -1,0 +1,90 @@
+// Copyright 2026
+// Licensed under the Solderpad Hardware License, Version 2.0.
+//
+// Secondary execution lane for the asymmetric dual-issue prototype.
+// Milestone-3 scope is deliberately restricted to scalar RV32I ALU operations.
+
+module cv32e40p_issue2_ex
+  import cv32e40p_pkg::*;
+(
+    input logic clk,
+    input logic rst_n,
+
+    input logic        valid_i,
+    input alu_opcode_e alu_operator_i,
+    input logic [31:0] operand_a_i,
+    input logic [31:0] operand_b_i,
+    input logic [4:0]  rd_i,
+
+    input  logic        kill_i,
+    input  logic        wb_ready_i,
+
+    output logic        ready_o,
+    output logic        valid_o,
+    output logic [4:0]  rd_o,
+    output logic [31:0] result_o
+);
+
+  logic [31:0] alu_result;
+  logic        alu_cmp_result;
+  logic        alu_ready;
+
+  logic        valid_q;
+  logic [4:0]  rd_q;
+  logic [31:0] result_q;
+
+  // The current Issue2 lane contains no long-latency operation, therefore its
+  // backpressure is solely determined by the one-entry output register.
+  assign ready_o = !valid_q || wb_ready_i;
+
+  cv32e40p_alu alu_issue2_i (
+      .clk                (clk),
+      .rst_n              (rst_n),
+      .enable_i           (valid_i && ready_o),
+      .operator_i         (alu_operator_i),
+      .operand_a_i        (operand_a_i),
+      .operand_b_i        (operand_b_i),
+      .operand_c_i        (32'b0),
+      .vector_mode_i      (VEC_MODE32),
+      .bmask_a_i          (5'b0),
+      .bmask_b_i          (5'b0),
+      .imm_vec_ext_i      (2'b0),
+      .is_clpx_i          (1'b0),
+      .is_subrot_i        (1'b0),
+      .clpx_shift_i       (2'b0),
+      .result_o           (alu_result),
+      .comparison_result_o(alu_cmp_result),
+      .ready_o            (alu_ready),
+      .ex_ready_i         (ready_o)
+  );
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      valid_q  <= 1'b0;
+      rd_q     <= '0;
+      result_q <= '0;
+    end else begin
+      // Kill has priority so a younger speculative Issue2 operation can never
+      // become architecturally visible after an Issue1 redirect.
+      if (kill_i) begin
+        valid_q <= 1'b0;
+      end else if (ready_o) begin
+        valid_q <= valid_i && alu_ready;
+        if (valid_i && alu_ready) begin
+          rd_q     <= rd_i;
+          result_q <= alu_result;
+        end
+      end
+    end
+  end
+
+  assign valid_o  = valid_q;
+  assign rd_o     = rd_q;
+  assign result_o = result_q;
+
+  // Keep comparison output explicitly consumed for lint cleanliness. The
+  // current lane has no branch instructions, so it is intentionally unused.
+  logic unused_cmp;
+  assign unused_cmp = alu_cmp_result;
+
+endmodule
