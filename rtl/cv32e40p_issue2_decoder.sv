@@ -2,7 +2,8 @@
 // Licensed under the Solderpad Hardware License, Version 2.0.
 //
 // Restricted decoder for the asymmetric secondary issue lane.
-// Supports RV32I OP and OP-IMM integer ALU instructions only.
+// Supports RV32I OP/OP-IMM plus scalar RV32M MUL. Other RV32M operations stay
+// on Issue1 to keep the secondary lane compact and single-cycle.
 
 module cv32e40p_issue2_decoder
   import cv32e40p_pkg::*;
@@ -16,6 +17,7 @@ module cv32e40p_issue2_decoder
     output logic        illegal_o,
     output logic [4:0]  rd_o,
     output alu_opcode_e alu_operator_o,
+    output logic        mul_en_o,
     output logic [31:0] operand_a_o,
     output logic [31:0] operand_b_o
 );
@@ -35,6 +37,7 @@ module cv32e40p_issue2_decoder
     valid_o        = valid_i;
     illegal_o      = 1'b0;
     alu_operator_o = ALU_ADD;
+    mul_en_o       = 1'b0;
     operand_a_o    = rs1_data_i;
     operand_b_o    = rs2_data_i;
 
@@ -73,9 +76,10 @@ module cv32e40p_issue2_decoder
         end
 
         OPCODE_OP: begin
-          // RV32M uses funct7=0000001 and is intentionally excluded.
           if (funct7 == 7'b0000001) begin
-            illegal_o = 1'b1;
+            // Compact secondary RV32M subset: MUL only.
+            if (funct3 == 3'b000) mul_en_o = 1'b1;
+            else illegal_o = 1'b1;
           end else begin
             unique case (funct3)
               3'b000: begin                     // ADD / SUB
