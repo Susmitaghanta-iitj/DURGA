@@ -1,7 +1,7 @@
 // Copyright 2026
 // Licensed under the Solderpad Hardware License, Version 2.0.
 //
-// Composed secondary lane: restricted decoder + scalar ALU execution +
+// Composed secondary lane: restricted decoder + scalar ALU/MUL execution +
 // one-entry writeback buffer. Register-file ports are intentionally external
 // at this milestone so the lane can be integrated without changing the golden
 // CV32E40P register file yet.
@@ -29,6 +29,7 @@ module cv32e40p_issue2_lane
   logic        dec_valid;
   logic [4:0]  dec_rd;
   alu_opcode_e dec_alu_op;
+  logic        dec_mul_en;
   logic [31:0] dec_operand_a;
   logic [31:0] dec_operand_b;
 
@@ -43,6 +44,7 @@ module cv32e40p_issue2_lane
       .illegal_o     (decode_illegal_o),
       .rd_o          (dec_rd),
       .alu_operator_o(dec_alu_op),
+      .mul_en_o      (dec_mul_en),
       .operand_a_o   (dec_operand_a),
       .operand_b_o   (dec_operand_b)
   );
@@ -52,6 +54,7 @@ module cv32e40p_issue2_lane
       .rst_n         (rst_n),
       .valid_i       (dec_valid),
       .alu_operator_i(dec_alu_op),
+      .mul_en_i      (dec_mul_en),
       .operand_a_i   (dec_operand_a),
       .operand_b_i   (dec_operand_b),
       .rd_i          (dec_rd),
