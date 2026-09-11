@@ -28,7 +28,7 @@ module cv32e40p_hamsa_refill_native128_tb;
       .refill_data_o(refill_data), .busy_o(busy)
   );
 
-  task automatic expect(input logic cond, input string msg);
+  task automatic check(input logic cond, input string msg);
     if (!cond) begin
       $display("FAIL: %s", msg);
       $fatal(1);
@@ -47,35 +47,35 @@ module cv32e40p_hamsa_refill_native128_tb;
     rst_n = 1;
     @(posedge clk);
 
-    expect(miss_ready, "engine should start ready");
+    check(miss_ready, "engine should start ready");
     miss_pc = 32'h0000_1236;
     miss_valid = 1;
     @(posedge clk);
     miss_valid = 0;
     #1;
-    expect(line_req, "native line request missing");
-    expect(line_addr == 32'h0000_1230, "line address must align to 16 bytes");
-    expect(busy, "busy should assert during request");
+    check(line_req, "native line request missing");
+    check(line_addr == 32'h0000_1230, "line address must align to 16 bytes");
+    check(busy, "busy should assert during request");
 
     line_gnt = 1;
     @(posedge clk);
     line_gnt = 0;
     #1;
-    expect(!line_req, "request must drop after grant");
+    check(!line_req, "request must drop after grant");
 
     line_rdata = 128'hD3D2D1D0_C3C2C1C0_B3B2B1B0_A3A2A1A0;
     line_rvalid = 1;
     @(posedge clk);
     line_rvalid = 0;
     #1;
-    expect(refill_valid, "refill pulse missing");
-    expect(refill_addr == 32'h0000_1230, "refill address mismatch");
-    expect(refill_data == line_rdata, "refill data mismatch");
-    expect(!busy, "engine should return idle after response");
+    check(refill_valid, "refill pulse missing");
+    check(refill_addr == 32'h0000_1230, "refill address mismatch");
+    check(refill_data == line_rdata, "refill data mismatch");
+    check(!busy, "engine should return idle after response");
 
     @(posedge clk);
     #1;
-    expect(!refill_valid, "refill pulse must be one cycle");
+    check(!refill_valid, "refill pulse must be one cycle");
 
     // Flush must cancel an outstanding request.
     miss_pc = 32'h0000_4004;
@@ -83,12 +83,12 @@ module cv32e40p_hamsa_refill_native128_tb;
     @(posedge clk);
     miss_valid = 0;
     #1;
-    expect(line_req, "second request missing");
+    check(line_req, "second request missing");
     flush = 1;
     @(posedge clk);
     flush = 0;
     #1;
-    expect(!busy && miss_ready, "flush must cancel outstanding refill");
+    check(!busy && miss_ready, "flush must cancel outstanding refill");
 
     $display("PASS: native 128-bit refill engine");
     $finish;
