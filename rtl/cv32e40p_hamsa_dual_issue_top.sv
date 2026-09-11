@@ -53,6 +53,8 @@ module cv32e40p_hamsa_dual_issue_top #(
 
     output logic [31:0] next_pc_o,
     output logic        issue2_issued_o,
+    output logic        issue2_retired_o,
+    output logic        issue2_killed_o,
     output logic        issue2_pending_o,
     output logic        issue2_blocked_o,
     output logic        issue2_block_raw_o,
@@ -151,6 +153,7 @@ module cv32e40p_hamsa_dual_issue_top #(
       .arb_alu_data_o             (arb_alu_data_o),
       .inst2_consumed_o           (inst2_consumed),
       .issue2_pending_o           (issue2_pending_o),
+      .issue2_retired_o           (issue2_retired_o),
       .issue2_blocked_o           (issue2_blocked_o),
       .issue2_block_raw_o         (issue2_block_raw_o),
       .issue2_block_waw_o         (issue2_block_waw_o),
@@ -161,6 +164,7 @@ module cv32e40p_hamsa_dual_issue_top #(
   );
 
   assign issue2_issued_o = inst2_consumed;
+  assign issue2_killed_o = recovery_kill && issue2_pending_o;
 
   logic unused_pair_meta;
   assign unused_pair_meta = ^pc2 ^ inst2_c;
