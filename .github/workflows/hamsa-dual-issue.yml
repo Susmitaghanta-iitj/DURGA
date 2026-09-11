@@ -30,6 +30,7 @@ jobs:
         run: |
           iverilog -g2012 -I rtl/include -o /tmp/issue2 \
             rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_ff_one.sv \
             rtl/cv32e40p_popcnt.sv \
             rtl/cv32e40p_alu_div.sv \
             rtl/cv32e40p_alu.sv \
@@ -57,6 +58,7 @@ jobs:
         run: |
           iverilog -g2012 -I rtl/include -o /tmp/cluster \
             rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_ff_one.sv \
             rtl/cv32e40p_popcnt.sv \
             rtl/cv32e40p_alu_div.sv \
             rtl/cv32e40p_alu.sv \
@@ -72,6 +74,7 @@ jobs:
         run: |
           iverilog -g2012 -I rtl/include -s cv32e40p_hamsa_dual_issue_top -o /tmp/hamsa_top \
             rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_ff_one.sv \
             rtl/cv32e40p_popcnt.sv \
             rtl/cv32e40p_alu_div.sv \
             rtl/cv32e40p_alu.sv \
