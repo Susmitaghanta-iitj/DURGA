@@ -11,30 +11,60 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Generate integrated HAMSA core
+
+      - name: Generate H0/H1 integrated core
         run: |
           python3 util/gen_hamsa_core.py
           test -s rtl/cv32e40p_core_hamsa.sv
           grep -q "module cv32e40p_core_hamsa" rtl/cv32e40p_core_hamsa.sv
           grep -q "hamsa_pair_buffer_i" rtl/cv32e40p_core_hamsa.sv
           grep -q "hamsa_issue_cluster_i" rtl/cv32e40p_core_hamsa.sv
-      - name: Generate evaluation testbenches
+
+      - name: Generate H2-32 and H2-128 full-core simulations
         run: |
-          python3 -m py_compile util/gen_baseline_eval_tb.py util/gen_hamsa_sim.py evaluation/run_example_vsim.py evaluation/run_benchmark_matrix.py evaluation/compute_metrics.py
+          python3 -m py_compile \
+            util/gen_hamsa_core_h2.py util/gen_hamsa_sim_h2.py \
+            util/gen_baseline_eval_tb.py util/gen_hamsa_sim.py \
+            evaluation/run_example_vsim.py evaluation/run_full_matrix.py \
+            evaluation/run_benchmark_matrix.py evaluation/compute_metrics.py \
+            evaluation/gen_microbench.py evaluation/plot_results.py
+          python3 util/gen_hamsa_sim_h2.py --native 0
+          test -s rtl/cv32e40p_core_hamsa_h2.sv
+          test -s rtl/cv32e40p_wrapper_h2_32.sv
+          test -s example_tb/core/cv32e40p_tb_subsystem_h2_32.sv
+          test -s example_tb/core/tb_top_h2_32.sv
+          test -s cv32e40p_manifest_h2_32.flist
+          grep -q "cv32e40p_hamsa_if_stage" rtl/cv32e40p_core_hamsa_h2.sv
+          grep -q "HAMSA_NATIVE_128_REFILL(1'b0)" rtl/cv32e40p_wrapper_h2_32.sv
+          grep -q "l0_lookups=" example_tb/core/tb_top_h2_32.sv
+
+          python3 util/gen_hamsa_sim_h2.py --native 1
+          test -s rtl/cv32e40p_wrapper_h2_128.sv
+          test -s example_tb/core/cv32e40p_tb_subsystem_h2_128.sv
+          test -s example_tb/core/tb_top_h2_128.sv
+          test -s cv32e40p_manifest_h2_128.flist
+          grep -q "HAMSA_NATIVE_128_REFILL(1'b1)" rtl/cv32e40p_wrapper_h2_128.sv
+          grep -q "INSTR_RDATA_WIDTH(128)" example_tb/core/cv32e40p_tb_subsystem_h2_128.sv
+
+      - name: Generate B0/H0/H1 evaluation testbenches
+        run: |
           python3 util/gen_baseline_eval_tb.py
           python3 util/gen_hamsa_sim.py
           test -s example_tb/core/tb_top_eval.sv
           test -s example_tb/core/tb_top_hamsa.sv
           grep -q "HAMSA_METRIC cycles=" example_tb/core/tb_top_eval.sv
           grep -q "issue1_retired=" example_tb/core/tb_top_hamsa.sv
-      - name: Install Icarus Verilog
-        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: Install RTL tools
+        run: sudo apt-get update && sudo apt-get install -y iverilog verilator
+
       - name: Compile and run Issue Decision Unit test
         run: |
           iverilog -g2012 -o /tmp/idu \
             rtl/cv32e40p_dual_issue_idu.sv \
             rtl/tb/cv32e40p_dual_issue_idu_tb.sv
           vvp /tmp/idu
+
       - name: Compile and run Issue2 ALU lane test
         run: |
           iverilog -g2012 -I rtl/include -o /tmp/issue2 \
@@ -48,12 +78,14 @@ jobs:
             rtl/cv32e40p_issue2_lane.sv \
             bhv/cv32e40p_issue2_unit_tb.sv
           vvp /tmp/issue2
+
       - name: Compile and run pair-buffer test
         run: |
           iverilog -g2012 -o /tmp/pairbuf \
             rtl/cv32e40p_dual_fetch_pair_buffer.sv \
             bhv/cv32e40p_dual_fetch_pair_buffer_tb.sv
           vvp /tmp/pairbuf
+
       - name: Compile and run HAMSA frontend test
         run: |
           iverilog -g2012 -I rtl/include -o /tmp/frontend \
@@ -63,12 +95,30 @@ jobs:
             rtl/cv32e40p_hamsa_frontend.sv \
             bhv/cv32e40p_hamsa_frontend_tb.sv
           vvp /tmp/frontend
+
       - name: Compile and run 32-to-128 refill adapter test
         run: |
           iverilog -g2012 -o /tmp/refill128 \
             rtl/cv32e40p_hamsa_refill_32to128.sv \
             bhv/cv32e40p_hamsa_refill_32to128_tb.sv
           vvp /tmp/refill128
+
+      - name: Elaborate native 128-bit refill engine
+        run: |
+          iverilog -g2012 -s cv32e40p_hamsa_refill_native128 -o /tmp/refill_native \
+            rtl/cv32e40p_hamsa_refill_native128.sv
+
+      - name: Elaborate H2 full-core IF stage
+        run: |
+          iverilog -g2012 -I rtl/include -s cv32e40p_hamsa_if_stage -o /tmp/h2_if \
+            rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_compressed_decoder.sv \
+            rtl/cv32e40p_dual_decode_128.sv \
+            rtl/cv32e40p_hamsa_frontend.sv \
+            rtl/cv32e40p_hamsa_refill_32to128.sv \
+            rtl/cv32e40p_hamsa_refill_native128.sv \
+            rtl/cv32e40p_hamsa_if_stage.sv
+
       - name: Compile and run HAMSA issue-cluster test
         run: |
           iverilog -g2012 -I rtl/include -o /tmp/cluster \
@@ -85,13 +135,15 @@ jobs:
             rtl/cv32e40p_hamsa_issue_cluster.sv \
             bhv/cv32e40p_hamsa_issue_cluster_tb.sv
           vvp /tmp/cluster
+
       - name: Elaborate HAMSA evaluation monitor
         run: |
           iverilog -g2012 -s cv32e40p_hamsa_eval_monitor -o /tmp/eval_monitor \
             rtl/cv32e40p_hamsa_perf_counters.sv \
             rtl/cv32e40p_hamsa_block_reason_counters.sv \
             rtl/cv32e40p_hamsa_eval_monitor.sv
-      - name: Elaborate integrated HAMSA top
+
+      - name: Elaborate integrated HAMSA block top
         run: |
           iverilog -g2012 -I rtl/include -s cv32e40p_hamsa_dual_issue_top -o /tmp/hamsa_top \
             rtl/include/cv32e40p_pkg.sv \
@@ -110,3 +162,10 @@ jobs:
             rtl/cv32e40p_issue2_lane.sv \
             rtl/cv32e40p_hamsa_issue_cluster.sv \
             rtl/cv32e40p_hamsa_dual_issue_top.sv
+
+      - name: Verilator lint generated H2 full core
+        run: |
+          python3 util/gen_hamsa_sim_h2.py --native 0
+          export DESIGN_RTL_DIR="$PWD/rtl"
+          verilator --lint-only -Wno-fatal --top-module cv32e40p_core_hamsa_h2 \
+            -f cv32e40p_manifest_h2_32.flist
