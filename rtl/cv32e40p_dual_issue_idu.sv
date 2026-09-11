@@ -15,6 +15,8 @@
 //   * Same-cycle RAW and WAW hazards from Issue1 -> Issue2 block Issue2.
 //   * Conditional branches may pair speculatively when enabled; recovery must
 //     kill the younger Issue2 operation on a taken redirect.
+//   * Unknown/custom Issue1 classes serialize conservatively until explicitly
+//     described by the partial decoder.
 //
 // This block performs only the partial decode required to decide whether the
 // second sequential instruction can be issued safely. It does not replace the
@@ -113,17 +115,19 @@ module cv32e40p_dual_issue_idu #(
     endcase
   end
 
-  // Loads/stores on Issue1 may pair with an independent Issue2 ALU operation.
-  // Jumps/system/fence always serialize. A conditional branch serializes only
-  // when speculative younger issue is disabled.
+  // Only explicitly known-safe Issue1 classes can carry a younger Issue2.
+  // This avoids letting an illegal/custom instruction expose a younger result
+  // before the primary decoder raises a trap or redirects control.
   always_comb begin
     unique case (opcode1)
+      OPC_LOAD,
+      OPC_STORE,
+      OPC_OP_IMM,
+      OPC_AUIPC,
+      OPC_OP,
+      OPC_LUI:    issue1_serializing_o = 1'b0;
       OPC_BRANCH: issue1_serializing_o = !SPECULATE_BEHIND_BRANCH;
-      OPC_JALR,
-      OPC_JAL,
-      OPC_SYSTEM,
-      OPC_MISC_MEM: issue1_serializing_o = 1'b1;
-      default:      issue1_serializing_o = 1'b0;
+      default:    issue1_serializing_o = 1'b1;
     endcase
   end
 
@@ -144,8 +148,9 @@ module cv32e40p_dual_issue_idu #(
                           !waw_hazard_o;
 
   logic unused_opcode_refs;
-  assign unused_opcode_refs = (opcode1 == OPC_STORE) || (opcode2 == OPC_LOAD) ||
-                              (opcode2 == OPC_STORE) || (opcode2 == OPC_AUIPC) ||
-                              (opcode2 == OPC_LUI);
+  assign unused_opcode_refs = (opcode1 == OPC_MISC_MEM) || (opcode1 == OPC_JALR) ||
+                              (opcode1 == OPC_JAL) || (opcode1 == OPC_SYSTEM) ||
+                              (opcode2 == OPC_LOAD) || (opcode2 == OPC_STORE) ||
+                              (opcode2 == OPC_AUIPC) || (opcode2 == OPC_LUI);
 
 endmodule
