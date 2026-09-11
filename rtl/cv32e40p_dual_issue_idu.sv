@@ -10,17 +10,13 @@
 //
 // Policy:
 //   * Issue1 remains the full CV32E40P pipeline.
-//   * Issue2 accepts only RV32 integer ALU OP/OP-IMM instructions.
+//   * Issue2 accepts RV32I OP/OP-IMM plus scalar RV32M MUL.
 //   * Memory, CSR, jumps, fence and custom instructions are kept on Issue1.
 //   * Same-cycle RAW and WAW hazards from Issue1 -> Issue2 block Issue2.
 //   * Conditional branches may pair speculatively when enabled; recovery must
 //     kill the younger Issue2 operation on a taken redirect.
 //   * Unknown/custom Issue1 classes serialize conservatively until explicitly
 //     described by the partial decoder.
-//
-// This block performs only the partial decode required to decide whether the
-// second sequential instruction can be issued safely. It does not replace the
-// architectural decoder.
 
 module cv32e40p_dual_issue_idu #(
     parameter bit SPECULATE_BEHIND_BRANCH = 1'b0
@@ -86,8 +82,6 @@ module cv32e40p_dual_issue_idu #(
     endcase
   end
 
-  // Secondary lane supports regular scalar RV32I OP/OP-IMM instructions.
-  // RV32M funct7=0000001 remains on Issue1 until a secondary multiplier exists.
   always_comb begin
     issue2_class_supported = 1'b0;
     inst2_uses_rs1         = 1'b0;
@@ -103,7 +97,10 @@ module cv32e40p_dual_issue_idu #(
       end
 
       OPC_OP: begin
-        issue2_class_supported = (inst2_i[31:25] != 7'b0000001);
+        // Normal RV32I OP is supported. From RV32M, only MUL (funct3=000)
+        // is accepted by the compact secondary multiplier.
+        issue2_class_supported = (inst2_i[31:25] != 7'b0000001) ||
+                                 (inst2_i[14:12] == 3'b000);
         inst2_uses_rs1         = 1'b1;
         inst2_uses_rs2         = 1'b1;
         inst2_writes_rd        = (inst2_rd_o != 5'd0);
@@ -115,9 +112,6 @@ module cv32e40p_dual_issue_idu #(
     endcase
   end
 
-  // Only explicitly known-safe Issue1 classes can carry a younger Issue2.
-  // This avoids letting an illegal/custom instruction expose a younger result
-  // before the primary decoder raises a trap or redirects control.
   always_comb begin
     unique case (opcode1)
       OPC_LOAD,
