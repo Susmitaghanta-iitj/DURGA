@@ -63,6 +63,12 @@ jobs:
             rtl/cv32e40p_hamsa_frontend.sv \
             bhv/cv32e40p_hamsa_frontend_tb.sv
           vvp /tmp/frontend
+      - name: Compile and run 32-to-128 refill adapter test
+        run: |
+          iverilog -g2012 -o /tmp/refill128 \
+            rtl/cv32e40p_hamsa_refill_32to128.sv \
+            bhv/cv32e40p_hamsa_refill_32to128_tb.sv
+          vvp /tmp/refill128
       - name: Compile and run HAMSA issue-cluster test
         run: |
           iverilog -g2012 -I rtl/include -o /tmp/cluster \
