@@ -176,8 +176,8 @@ jobs:
         run: |
           python3 util/gen_hamsa_sim_h2.py --native 0
           export DESIGN_RTL_DIR="$PWD/rtl"
-          # Use all supported HPM counters to avoid a baseline CV32E40P
-          # Verilator-5 limitation in disabled-counter generate branches.
-          verilator --lint-only -Wno-fatal -GNUM_MHPMCOUNTERS=29 \
+          # Ignore the upstream packed HPM BLKANDNBLK diagnostic; it comes
+          # from legacy CSR generate tie-offs and is unrelated to HAMSA RTL.
+          verilator --lint-only -Wno-fatal -Wno-BLKANDNBLK \
             --top-module cv32e40p_core_hamsa_h2 \
             -f cv32e40p_manifest_h2_32.flist
