@@ -31,8 +31,8 @@ def main() -> None:
     subprocess.run(["python3", str(ROOT / "util" / "gen_hamsa_core.py")], check=True)
 
     wrapper = (RTL / "cv32e40p_wrapper.sv").read_text()
-    wrapper = replace_once(wrapper, "module cv32e40p_wrapper #(",
-                           "module cv32e40p_wrapper_hamsa #(", "wrapper module")
+    wrapper = replace_once(wrapper, "module cv32e40p_wrapper #(\n",
+                           "module cv32e40p_wrapper_hamsa #(\n", "wrapper module")
     wrapper = replace_once(wrapper, "  cv32e40p_core #(\n",
                            "  cv32e40p_core_hamsa #(\n", "core instance")
     (RTL / "cv32e40p_wrapper_hamsa.sv").write_text(wrapper)
@@ -52,10 +52,12 @@ def main() -> None:
                        "  cv32e40p_tb_subsystem_hamsa #(\n", "tb subsystem")
     top = top.replace("endmodule  // tb_top", "endmodule  // tb_top_hamsa")
 
-    # Emit lightweight benchmark counters directly from the generated-core
-    # integration signals. These do not alter architectural state.
     marker = "  // check if we succeded\n"
     counter_block = r'''  // HAMSA benchmark-observability counters.
+  // mhpmevent_minstret counts primary-lane architectural retire events. Issue2
+  // retire is counted separately, so total retired = issue1 + issue2.
+  longint unsigned hamsa_cycles_q;
+  longint unsigned hamsa_issue1_retired_q;
   longint unsigned hamsa_issue2_issued_q;
   longint unsigned hamsa_issue2_retired_q;
   longint unsigned hamsa_issue2_blocked_q;
@@ -63,11 +65,16 @@ def main() -> None:
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
+      hamsa_cycles_q         <= 0;
+      hamsa_issue1_retired_q <= 0;
       hamsa_issue2_issued_q  <= 0;
       hamsa_issue2_retired_q <= 0;
       hamsa_issue2_blocked_q <= 0;
       hamsa_issue2_killed_q  <= 0;
     end else begin
+      hamsa_cycles_q <= hamsa_cycles_q + 1;
+      if (wrapper_i.wrapper_i.core_i.mhpmevent_minstret)
+        hamsa_issue1_retired_q <= hamsa_issue1_retired_q + 1;
       if (wrapper_i.wrapper_i.core_i.hamsa_inst2_consumed)
         hamsa_issue2_issued_q <= hamsa_issue2_issued_q + 1;
       if (wrapper_i.wrapper_i.core_i.hamsa_alu_we_fw &&
@@ -83,9 +90,10 @@ def main() -> None:
 
   task automatic hamsa_print_metrics;
     begin
-      $display("HAMSA_METRIC cycles=%0d issue2_issued=%0d issue2_retired=%0d issue2_blocked=%0d issue2_killed=%0d",
-               cycle_cnt_q, hamsa_issue2_issued_q, hamsa_issue2_retired_q,
-               hamsa_issue2_blocked_q, hamsa_issue2_killed_q);
+      $display("HAMSA_METRIC cycles=%0d issue1_retired=%0d issue2_issued=%0d issue2_retired=%0d issue2_blocked=%0d issue2_killed=%0d l0_lookups=0 l0_hits=0",
+               hamsa_cycles_q, hamsa_issue1_retired_q, hamsa_issue2_issued_q,
+               hamsa_issue2_retired_q, hamsa_issue2_blocked_q,
+               hamsa_issue2_killed_q);
     end
   endtask
 
@@ -93,7 +101,6 @@ def main() -> None:
     if marker not in top:
         raise RuntimeError("tb metric insertion anchor not found")
     top = top.replace(marker, counter_block + marker, 1)
-    # Print the counters for all normal termination paths.
     top = top.replace('$display("ALL TESTS PASSED");\n      $finish;',
                       '$display("ALL TESTS PASSED");\n      hamsa_print_metrics();\n      $finish;')
     top = top.replace('$display("TEST(S) FAILED!");\n      $finish;',
