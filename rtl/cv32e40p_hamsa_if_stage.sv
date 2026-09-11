@@ -6,13 +6,13 @@
 // This module preserves the CV32E40P architectural PC redirect semantics
 // (boot/jump/branch/trap/mret/uret/dret/fence.i/hardware-loop) while replacing
 // the original word-oriented prefetch/align/decompress path with the HAMSA
-// 8x128-bit L0 + RV32C-aware dual extractor.  It can refill the L0 either over
+// 8x128-bit L0 + RV32C-aware dual extractor. It can refill the L0 either over
 // the legacy 32-bit instruction bus (four beats per line, H2-32) or through a
 // native 128-bit line interface (one beat per line, H2-128).
 //
 // Important replay rule: if Inst2 cannot be consumed by the secondary lane,
 // the next lookup PC becomes pc2 so the younger instruction is re-presented as
-// Issue1.  Therefore dual issue is an optimization only; architectural progress
+// Issue1. Therefore dual issue is an optimization only; architectural progress
 // remains strictly in order.
 
 module cv32e40p_hamsa_if_stage #(
@@ -34,7 +34,6 @@ module cv32e40p_hamsa_if_stage #(
 
     input logic req_i,
 
-    // Legacy 32-bit instruction bus (used by H2-32).
     output logic        instr_req_o,
     output logic [31:0] instr_addr_o,
     input  logic        instr_gnt_i,
@@ -43,14 +42,12 @@ module cv32e40p_hamsa_if_stage #(
     input  logic        instr_err_i,
     input  logic        instr_err_pmp_i,
 
-    // Native 128-bit line interface (used by H2-128).
     output logic         line_req_o,
     output logic [31:0]  line_addr_o,
     input  logic         line_gnt_i,
     input  logic         line_rvalid_i,
     input  logic [127:0] line_rdata_i,
 
-    // Primary instruction delivered to the legacy ID stage.
     output logic        instr_valid_id_o,
     output logic [31:0] instr_rdata_id_o,
     output logic        is_compressed_id_o,
@@ -59,7 +56,6 @@ module cv32e40p_hamsa_if_stage #(
     output logic [31:0] pc_id_o,
     output logic        is_fetch_failed_o,
 
-    // Younger candidate instruction delivered to the HAMSA issue cluster.
     output logic        inst2_valid_o,
     output logic [31:0] inst2_rdata_o,
     output logic [31:0] inst2_pc_o,
@@ -89,7 +85,6 @@ module cv32e40p_hamsa_if_stage #(
     output logic if_busy_o,
     output logic perf_imiss_o,
 
-    // Evaluation pulses.
     output logic l0_lookup_o,
     output logic l0_hit_o,
     output logic l0_refill_o
@@ -103,6 +98,7 @@ module cv32e40p_hamsa_if_stage #(
   logic [31:0] redirect_pc;
 
   logic [31:0] pc_q;
+  logic [31:0] lookup_pc;
   logic        redirect;
   logic        invalidate_l0;
 
@@ -129,9 +125,6 @@ module cv32e40p_hamsa_if_stage #(
   logic [127:0] refill_data;
   logic refill_busy;
 
-  // ------------------------------------------------------------------------
-  // Preserve the redirect-target selection of cv32e40p_if_stage.
-  // ------------------------------------------------------------------------
   always_comb begin
     unique case (trap_addr_mux_i)
       TRAP_MACHINE: trap_base_addr = m_trap_base_addr_i;
@@ -170,19 +163,29 @@ module cv32e40p_hamsa_if_stage #(
     endcase
   end
 
-  assign redirect      = pc_set_i || hwlp_jump_i || clear_instr_valid_i;
-  assign invalidate_l0 = pc_set_i && (pc_mux_i == PC_FENCEI);
-  assign csr_mtvec_init_o = (pc_mux_i == PC_BOOT) && pc_set_i;
+  assign redirect          = pc_set_i || hwlp_jump_i || clear_instr_valid_i;
+  assign invalidate_l0     = pc_set_i && (pc_mux_i == PC_FENCEI);
+  assign csr_mtvec_init_o  = (pc_mux_i == PC_BOOT) && pc_set_i;
 
-  // Hardware-loop redirection is an independent original-frontend path.
   wire [31:0] effective_redirect_pc = pc_set_i ? redirect_pc :
                                        hwlp_jump_i ? hwlp_target_i : pc_q;
 
-  // ------------------------------------------------------------------------
-  // HAMSA L0 + RV32C dual extraction.
-  // ------------------------------------------------------------------------
+  assign pair_ready = id_ready_i && !halt_if_i;
+
+  // Look one pair ahead when the current pair is retiring. This avoids a
+  // compulsory bubble on L0 hits while remaining replay-correct: if Inst2 was
+  // not accepted, pc2 is looked up and becomes the next primary instruction.
+  always_comb begin
+    lookup_pc = pc_q;
+    if (pair_valid && pair_ready) begin
+      if (pair_inst2_valid && !inst2_consumed_i)
+        lookup_pc = pair_pc2;
+      else
+        lookup_pc = pair_next_pc;
+    end
+  end
+
   assign lookup_valid = req_i && !halt_if_i && !refill_busy && !redirect;
-  assign pair_ready   = id_ready_i && !halt_if_i;
 
   cv32e40p_hamsa_frontend #(
       .LINES(L0_LINES),
@@ -194,7 +197,7 @@ module cv32e40p_hamsa_if_stage #(
       .redirect_i         (redirect),
       .redirect_pc_i      (effective_redirect_pc),
       .lookup_valid_i     (lookup_valid),
-      .lookup_pc_i        (pc_q),
+      .lookup_pc_i        (lookup_pc),
       .lookup_ready_o     (lookup_ready),
       .lookup_hit_o       (lookup_hit),
       .refill_valid_i     (refill_valid),
@@ -214,8 +217,6 @@ module cv32e40p_hamsa_if_stage #(
       .next_pc_o          (pair_next_pc)
   );
 
-  // One miss request per lookup. While a refill is outstanding lookup_valid is
-  // suppressed, so the miss cannot be re-launched repeatedly.
   assign miss_valid = lookup_valid && lookup_ready && !lookup_hit;
 
   generate
@@ -225,7 +226,7 @@ module cv32e40p_hamsa_if_stage #(
           .rst_n          (rst_n),
           .flush_i        (redirect),
           .miss_valid_i   (miss_valid),
-          .miss_pc_i      (pc_q),
+          .miss_pc_i      (lookup_pc),
           .miss_ready_o   (miss_ready),
           .instr_req_o    (instr_req_o),
           .instr_addr_o   (instr_addr_o),
@@ -245,7 +246,7 @@ module cv32e40p_hamsa_if_stage #(
           .rst_n          (rst_n),
           .flush_i        (redirect),
           .miss_valid_i   (miss_valid),
-          .miss_pc_i      (pc_q),
+          .miss_pc_i      (lookup_pc),
           .miss_ready_o   (miss_ready),
           .line_req_o     (line_req_o),
           .line_addr_o    (line_addr_o),
@@ -262,9 +263,6 @@ module cv32e40p_hamsa_if_stage #(
     end
   endgenerate
 
-  // ------------------------------------------------------------------------
-  // Architectural PC sequencing and Inst2 replay.
-  // ------------------------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       pc_q <= {boot_addr_i[31:2], 2'b0};
@@ -274,7 +272,6 @@ module cv32e40p_hamsa_if_stage #(
       else if (hwlp_jump_i)
         pc_q <= hwlp_target_i;
       else if (pair_valid && pair_ready) begin
-        // If the younger instruction was not consumed, replay it as Issue1.
         if (pair_inst2_valid && !inst2_consumed_i)
           pc_q <= pair_pc2;
         else
@@ -303,10 +300,8 @@ module cv32e40p_hamsa_if_stage #(
   assign l0_hit_o     = lookup_valid && lookup_ready && lookup_hit;
   assign l0_refill_o  = refill_valid;
 
-  // CV32E40P does not currently consume external instruction-bus errors in the
-  // baseline IF stage; retain that architectural behavior in HAMSA mode.
   logic unused_err;
-  assign unused_err = instr_err_i ^ instr_err_pmp_i ^ PULP_XPULP[0] ^
-                      PULP_SECURE[0];
+  assign unused_err = instr_err_i ^ instr_err_pmp_i ^ (PULP_XPULP != 0) ^
+                      (PULP_SECURE != 0);
 
 endmodule
