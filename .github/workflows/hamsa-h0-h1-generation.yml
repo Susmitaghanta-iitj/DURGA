@@ -1,0 +1,33 @@
+name: hamsa-h0-h1-generation
+
+on:
+  push:
+    branches: [feature/hamsa-dual-issue]
+  pull_request:
+    branches: [CV32e40p-original, master]
+
+jobs:
+  generate-modes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate H0 (Issue2 disabled)
+        run: |
+          python3 util/gen_hamsa_sim.py --enable-issue2 0
+          grep -q "HAMSA_ENABLE_ISSUE2(1'b0)" rtl/cv32e40p_wrapper_hamsa.sv
+          grep -q "module tb_top_hamsa" example_tb/core/tb_top_hamsa.sv
+          grep -q "HAMSA_METRIC" example_tb/core/tb_top_hamsa.sv
+      - name: Generate H1 (Issue2 enabled)
+        run: |
+          python3 util/gen_hamsa_sim.py --enable-issue2 1
+          grep -q "HAMSA_ENABLE_ISSUE2(1'b1)" rtl/cv32e40p_wrapper_hamsa.sv
+          grep -q "hamsa_issue2_retired" example_tb/core/tb_top_hamsa.sv
+      - name: Check evaluation scripts
+        run: |
+          python3 -m py_compile \
+            util/gen_hamsa_core.py \
+            util/gen_hamsa_sim.py \
+            util/gen_baseline_eval_tb.py \
+            evaluation/run_example_vsim.py \
+            evaluation/run_benchmark_matrix.py \
+            evaluation/compute_metrics.py
