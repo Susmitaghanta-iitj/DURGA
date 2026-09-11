@@ -39,7 +39,7 @@ module cv32e40p_hamsa_if_stage_tb;
   ) dut (
       .clk(clk), .rst_n(rst_n),
       .m_trap_base_addr_i(24'h000100), .u_trap_base_addr_i(24'h000200),
-      .trap_addr_mux_i(TRAP_MACHINE), .boot_addr_i(32'h00000180),
+      .trap_addr_mux_i(2'b00), .boot_addr_i(32'h00000180),
       .dm_exception_addr_i(32'h00000800), .dm_halt_addr_i(32'h00000900),
       .req_i(req),
       .instr_req_o(instr_req), .instr_addr_o(instr_addr),
@@ -55,7 +55,7 @@ module cv32e40p_hamsa_if_stage_tb;
       .inst2_consumed_i(inst2_consumed),
       .clear_instr_valid_i(clear_valid), .pc_set_i(pc_set),
       .mepc_i(32'h00000300), .uepc_i(32'h00000400), .depc_i(32'h00000500),
-      .pc_mux_i(pc_mux), .exc_pc_mux_i(EXC_PC_EXCEPTION),
+      .pc_mux_i(pc_mux), .exc_pc_mux_i(3'b000),
       .m_exc_vec_pc_mux_i(5'd0), .u_exc_vec_pc_mux_i(5'd0),
       .csr_mtvec_init_o(csr_mtvec_init),
       .jump_target_id_i(32'h00000200), .jump_target_ex_i(32'h00000240),
@@ -83,12 +83,20 @@ module cv32e40p_hamsa_if_stage_tb;
       end
       check(line_req, "timed out waiting for line request");
       check(line_addr == expected_addr, "unexpected native line address");
+
+      @(negedge clk);
       line_gnt = 1;
       @(posedge clk);
+      @(negedge clk);
       line_gnt = 0;
+      check(!line_req, "line request did not retire after grant");
+
       line_rdata = data;
       line_rvalid = 1;
       @(posedge clk);
+      #1;
+      check(l0_refill, "frontend did not observe native refill completion");
+      @(negedge clk);
       line_rvalid = 0;
     end
   endtask
@@ -98,7 +106,7 @@ module cv32e40p_hamsa_if_stage_tb;
     integer guard;
     begin
       guard = 0;
-      while (!instr_valid && guard < 30) begin
+      while ((!instr_valid || pc_id != expected_pc1) && guard < 40) begin
         @(posedge clk);
         guard++;
       end
@@ -130,6 +138,7 @@ module cv32e40p_hamsa_if_stage_tb;
     id_ready = 0;
 
     repeat (3) @(posedge clk);
+    @(negedge clk);
     rst_n = 1;
     req = 1;
 
@@ -138,33 +147,41 @@ module cv32e40p_hamsa_if_stage_tb;
     check(instr == I1 && inst2 == I2, "first decoded pair mismatch");
 
     inst2_consumed = 0;
+    @(negedge clk);
     id_ready = 1;
     @(posedge clk);
+    @(negedge clk);
     id_ready = 0;
     wait_pair(32'h00000184, 32'h00000188);
     check(instr == I2 && inst2 == I3, "replayed pair mismatch");
 
     inst2_consumed = 1;
+    @(negedge clk);
     id_ready = 1;
     @(posedge clk);
+    @(negedge clk);
     id_ready = 0;
     begin : wait_i4
       integer guard;
       guard = 0;
-      while ((!instr_valid || pc_id != 32'h0000018c) && guard < 30) begin
+      while ((!instr_valid || pc_id != 32'h0000018c) && guard < 40) begin
         @(posedge clk);
         guard++;
       end
-      check(instr_valid && pc_id == 32'h0000018c, "consumed pair did not advance to I4");
+      check(instr_valid && pc_id == 32'h0000018c,
+            "consumed pair did not advance to I4");
       check(instr == I4, "I4 instruction mismatch");
     end
 
+    @(negedge clk);
     pc_mux = PC_JUMP;
     pc_set = 1;
     @(posedge clk);
+    @(negedge clk);
     pc_set = 0;
     pc_mux = PC_BOOT;
     id_ready = 0;
+
     service_line(32'h00000200, {I4, I3, I2, I1});
     wait_pair(32'h00000200, 32'h00000204);
     check(instr == I1, "redirected primary instruction mismatch");
