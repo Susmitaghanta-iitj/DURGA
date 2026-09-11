@@ -11,7 +11,7 @@ from making forward progress.
 
 ## Current implementation status
 
-Implemented as isolated, synthesizable building blocks:
+Implemented as synthesizable building blocks:
 
 - `cv32e40p_dual_issue_idu.sv`: partial decode, Issue2 eligibility, RAW/WAW checks,
   and conservative serialization.
@@ -20,12 +20,14 @@ Implemented as isolated, synthesizable building blocks:
   buffering and kill support.
 - `cv32e40p_issue2_lane.sv`: composed Issue2 decoder + execution lane.
 - `cv32e40p_register_file_5r3w.sv`: experimental 5-read/3-write FF register file.
-- Directed unit tests for the IDU and Issue2 lane.
+- `cv32e40p_dual_issue_pair_unit.sv`: integration scaffold joining the IDU,
+  Issue2 lane, and 5R3W RF while keeping Issue1 RF semantics unchanged.
+- Directed unit tests for the IDU, Issue2 lane, and the integrated pair unit.
 
-The baseline core pipeline has deliberately not yet been rewired. This keeps the
-master CV32E40P behavior intact while the new blocks are stabilized. The next
-integration step is to expose instruction 2 and its operands to the ID stage,
-then connect Issue2 writeback through the 5R3W register-file experiment.
+The new pair unit now establishes the intended ID/RF/Issue2 boundary: Issue1 uses
+RF read ports A/B/C and write ports A/B, while Issue2 uses read ports D/E and write
+port C. The next invasive step is frontend/core wiring so that a real sequential
+instruction pair reaches this boundary.
 
 ## Milestones
 
@@ -40,18 +42,22 @@ then connect Issue2 writeback through the 5R3W register-file experiment.
    - Start with fixed-width 32-bit instructions (PC and PC+4).
    - Expose instruction-2 valid/data/PC to ID.
    - Keep compressed-instruction dual fetch disabled initially.
+   - Because the existing external instruction interface is only 32 bits wide,
+     the first core prototype will use a small internal pair buffer to validate
+     correctness before widening the external fetch path/L0 frontend.
 
-3. **Secondary decode and ALU execution lane — block implementation complete**
+3. **Secondary decode and ALU execution lane — implemented**
    - Restricted RV32I OP/OP-IMM decode is implemented.
    - Scalar Issue2 ALU path is implemented using the existing CV32E40P ALU.
    - One-entry Issue2 writeback state and kill input are implemented.
-   - Core-level wiring remains pending.
+   - Pair-unit-level RF wiring is implemented; top-level core wiring is pending.
 
-4. **Register-file / writeback extension — experimental block implemented**
+4. **Register-file / writeback extension — integration scaffold implemented**
    - A straightforward 5R3W flip-flop register file is available for PPA study.
    - W3 > W2 > W1 deterministic write priority is used; IDU WAW filtering should
      make normal dual-issue W3/W1 collisions impossible.
-   - Integration into `cv32e40p_id_stage` remains pending.
+   - The pair unit connects Issue2 writeback to W3 while preserving baseline
+     Issue1 W1/W2 semantics.
    - Lower-cost alternatives should be evaluated against this baseline.
 
 5. **Cross forwarding and pipeline hazards**
