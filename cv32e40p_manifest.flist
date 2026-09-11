@@ -36,6 +36,7 @@ ${DESIGN_RTL_DIR}/cv32e40p_cs_registers.sv
 ${DESIGN_RTL_DIR}/cv32e40p_register_file_ff.sv
 ${DESIGN_RTL_DIR}/cv32e40p_load_store_unit.sv
 ${DESIGN_RTL_DIR}/cv32e40p_dual_issue_idu.sv
+${DESIGN_RTL_DIR}/cv32e40p_issue2_decoder.sv
 ${DESIGN_RTL_DIR}/cv32e40p_id_stage.sv
 ${DESIGN_RTL_DIR}/cv32e40p_aligner.sv
 ${DESIGN_RTL_DIR}/cv32e40p_decoder.sv
@@ -46,6 +47,7 @@ ${DESIGN_RTL_DIR}/cv32e40p_hwloop_regs.sv
 ${DESIGN_RTL_DIR}/cv32e40p_mult.sv
 ${DESIGN_RTL_DIR}/cv32e40p_int_controller.sv
 ${DESIGN_RTL_DIR}/cv32e40p_ex_stage.sv
+${DESIGN_RTL_DIR}/cv32e40p_issue2_ex.sv
 ${DESIGN_RTL_DIR}/cv32e40p_alu_div.sv
 ${DESIGN_RTL_DIR}/cv32e40p_alu.sv
 ${DESIGN_RTL_DIR}/cv32e40p_ff_one.sv
