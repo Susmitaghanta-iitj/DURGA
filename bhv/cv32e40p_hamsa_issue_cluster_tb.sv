@@ -5,6 +5,7 @@ module cv32e40p_hamsa_issue_cluster_tb;
   logic rst_n;
   logic flush;
   logic pair_fire;
+  logic primary_commit_safe;
   logic inst1_valid;
   logic [31:0] inst1;
   logic inst2_valid;
@@ -46,6 +47,7 @@ module cv32e40p_hamsa_issue_cluster_tb;
       .rst_n(rst_n),
       .flush_i(flush),
       .pair_fire_i(pair_fire),
+      .primary_commit_safe_i(primary_commit_safe),
       .inst1_valid_i(inst1_valid),
       .inst1_i(inst1),
       .inst2_valid_i(inst2_valid),
@@ -86,6 +88,7 @@ module cv32e40p_hamsa_issue_cluster_tb;
     rst_n = 1'b0;
     flush = 1'b0;
     pair_fire = 1'b0;
+    primary_commit_safe = 1'b0;
     inst1_valid = 1'b0;
     inst1 = '0;
     inst2_valid = 1'b0;
@@ -107,6 +110,8 @@ module cv32e40p_hamsa_issue_cluster_tb;
     seed_reg(5'd2, 32'd7);
 
     // Independent pair: Issue1 writes x5, Issue2 computes x6=x1+x2.
+    // Keep primary_commit_safe low to prove the younger result cannot retire
+    // before the older instruction is architecturally safe.
     @(negedge clk);
     inst1       = enc_addi(5'd5, 5'd0, 12'd1);
     inst2       = enc_add(5'd6, 5'd1, 5'd2);
@@ -121,20 +126,19 @@ module cv32e40p_hamsa_issue_cluster_tb;
     inst1_valid = 1'b0;
     inst2_valid = 1'b0;
 
-    // The Issue2 writeback should be arbitrated when primary ALU port is idle.
-    repeat (2) begin
-      @(negedge clk);
-      #1;
-      if (arb_alu_we) begin
-        if (arb_alu_addr !== 6'd6 || arb_alu_data !== 32'd17)
-          $fatal(1, "bad Issue2 WB addr=%0d data=%h", arb_alu_addr, arb_alu_data);
-        break;
-      end
-    end
-    if (!arb_alu_we) $fatal(1, "Issue2 result never reached arbitration port");
+    #1;
+    if (!issue2_pending) $fatal(1, "Issue2 result should be buffered");
+    if (arb_alu_we) $fatal(1, "Issue2 retired before primary commit-safe");
+
+    primary_commit_safe = 1'b1;
+    #1;
+    if (!arb_alu_we || arb_alu_addr !== 6'd6 || arb_alu_data !== 32'd17)
+      $fatal(1, "bad gated Issue2 WB addr=%0d data=%h", arb_alu_addr, arb_alu_data);
+    @(posedge clk);
+    @(negedge clk);
+    primary_commit_safe = 1'b0;
 
     // RAW pair must be blocked: inst1 rd=x3, inst2 rs1=x3.
-    @(negedge clk);
     inst1       = enc_addi(5'd3, 5'd0, 12'd9);
     inst2       = enc_add(5'd7, 5'd3, 5'd2);
     inst1_valid = 1'b1;
