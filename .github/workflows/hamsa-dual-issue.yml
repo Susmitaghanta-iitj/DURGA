@@ -70,6 +70,12 @@ jobs:
             rtl/cv32e40p_hamsa_issue_cluster.sv \
             bhv/cv32e40p_hamsa_issue_cluster_tb.sv
           vvp /tmp/cluster
+      - name: Elaborate HAMSA evaluation monitor
+        run: |
+          iverilog -g2012 -s cv32e40p_hamsa_eval_monitor -o /tmp/eval_monitor \
+            rtl/cv32e40p_hamsa_perf_counters.sv \
+            rtl/cv32e40p_hamsa_block_reason_counters.sv \
+            rtl/cv32e40p_hamsa_eval_monitor.sv
       - name: Elaborate integrated HAMSA top
         run: |
           iverilog -g2012 -I rtl/include -s cv32e40p_hamsa_dual_issue_top -o /tmp/hamsa_top \
