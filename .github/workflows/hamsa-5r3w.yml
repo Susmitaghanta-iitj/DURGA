@@ -32,6 +32,9 @@ jobs:
       - name: Verilator lint native 5R3W H2 core
         run: |
           export DESIGN_RTL_DIR="$PWD/rtl"
-          verilator --lint-only -Wno-fatal \
+          # NUM_MHPMCOUNTERS=29 avoids a known baseline CV32E40P Verilator-5
+          # limitation where disabled HPM generate slices combine continuous and
+          # procedural assignments. It does not change the HAMSA datapath.
+          verilator --lint-only -Wno-fatal -GNUM_MHPMCOUNTERS=29 \
             --top-module cv32e40p_core_hamsa_h2_5r3w \
             -f cv32e40p_manifest_h2_5r3w.flist
