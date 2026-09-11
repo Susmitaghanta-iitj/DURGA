@@ -43,6 +43,7 @@ module cv32e40p_hamsa_issue_cluster (
 
     output logic        inst2_consumed_o,
     output logic        issue2_pending_o,
+    output logic        issue2_retired_o,
     output logic        issue2_blocked_o,
 
     // Mutually non-exclusive block-reason observability for evaluation.
@@ -185,6 +186,7 @@ module cv32e40p_hamsa_issue_cluster (
 
   assign inst2_consumed_o = issue2_accept;
   assign issue2_pending_o  = issue2_wb_valid;
+  assign issue2_retired_o  = issue2_commit;
   assign issue2_blocked_o  = inst1_valid_i && inst2_valid_i &&
                              (!issue2_valid || !issue2_ready || issue2_illegal);
 
