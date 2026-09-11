@@ -42,6 +42,14 @@ module cv32e40p_hamsa_issue_cluster_tb;
     return {imm, rs1, 3'b000, rd, 7'b0010011};
   endfunction
 
+  function automatic logic [31:0] enc_beq(
+      input logic [4:0] rs1,
+      input logic [4:0] rs2
+  );
+    // BEQ rs1,rs2,+4. Exact target value is not relevant to this unit test.
+    return {7'b0000000, rs2, rs1, 3'b000, 5'b00100, 7'b1100011};
+  endfunction
+
   cv32e40p_hamsa_issue_cluster dut (
       .clk(clk),
       .rst_n(rst_n),
@@ -147,6 +155,40 @@ module cv32e40p_hamsa_issue_cluster_tb;
     #1;
     if (inst2_consumed || !issue2_blocked)
       $fatal(1, "RAW pair was not blocked");
+    @(posedge clk);
+    @(negedge clk);
+    pair_fire   = 1'b0;
+    inst1_valid = 1'b0;
+    inst2_valid = 1'b0;
+
+    // Conditional branch speculation is enabled in the HAMSA issue cluster.
+    // The younger instruction can execute, but a redirect/flush must kill its
+    // buffered result before commit.
+    inst1       = enc_beq(5'd1, 5'd2);
+    inst2       = enc_add(5'd9, 5'd1, 5'd2);
+    inst1_valid = 1'b1;
+    inst2_valid = 1'b1;
+    pair_fire   = 1'b1;
+    primary_commit_safe = 1'b0;
+    #1;
+    if (!inst2_consumed)
+      $fatal(1, "Issue2 should speculate behind a conditional branch");
+    @(posedge clk);
+    @(negedge clk);
+    pair_fire   = 1'b0;
+    inst1_valid = 1'b0;
+    inst2_valid = 1'b0;
+    #1;
+    if (!issue2_pending) $fatal(1, "speculative Issue2 result was not buffered");
+
+    flush = 1'b1;
+    @(posedge clk);
+    @(negedge clk);
+    flush = 1'b0;
+    primary_commit_safe = 1'b1;
+    #1;
+    if (issue2_pending || arb_alu_we)
+      $fatal(1, "killed speculative Issue2 result became architecturally visible");
 
     $display("cv32e40p_hamsa_issue_cluster_tb: PASS");
     $finish;
