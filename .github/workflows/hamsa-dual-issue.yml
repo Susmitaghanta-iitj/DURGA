@@ -1,0 +1,81 @@
+name: hamsa-dual-issue
+
+on:
+  push:
+    branches: [feature/hamsa-dual-issue]
+  pull_request:
+    branches: [CV32e40p-original, master]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+      - name: Compile and run Issue Decision Unit test
+        run: |
+          iverilog -g2012 -o /tmp/idu \
+            rtl/cv32e40p_dual_issue_idu.sv \
+            rtl/tb/cv32e40p_dual_issue_idu_tb.sv
+          vvp /tmp/idu
+      - name: Compile and run Issue2 ALU lane test
+        run: |
+          iverilog -g2012 -I rtl/include -o /tmp/issue2 \
+            rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_popcnt.sv \
+            rtl/cv32e40p_alu_div.sv \
+            rtl/cv32e40p_alu.sv \
+            rtl/cv32e40p_issue2_decoder.sv \
+            rtl/cv32e40p_issue2_ex.sv \
+            rtl/cv32e40p_issue2_lane.sv \
+            bhv/cv32e40p_issue2_unit_tb.sv
+          vvp /tmp/issue2
+      - name: Compile and run pair-buffer test
+        run: |
+          iverilog -g2012 -o /tmp/pairbuf \
+            rtl/cv32e40p_dual_fetch_pair_buffer.sv \
+            bhv/cv32e40p_dual_fetch_pair_buffer_tb.sv
+          vvp /tmp/pairbuf
+      - name: Compile and run HAMSA frontend test
+        run: |
+          iverilog -g2012 -I rtl/include -o /tmp/frontend \
+            rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_compressed_decoder.sv \
+            rtl/cv32e40p_dual_decode_128.sv \
+            rtl/cv32e40p_hamsa_frontend.sv \
+            bhv/cv32e40p_hamsa_frontend_tb.sv
+          vvp /tmp/frontend
+      - name: Compile and run HAMSA issue-cluster test
+        run: |
+          iverilog -g2012 -I rtl/include -o /tmp/cluster \
+            rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_popcnt.sv \
+            rtl/cv32e40p_alu_div.sv \
+            rtl/cv32e40p_alu.sv \
+            rtl/cv32e40p_dual_issue_idu.sv \
+            rtl/cv32e40p_dual_issue_forwarding.sv \
+            rtl/cv32e40p_issue2_decoder.sv \
+            rtl/cv32e40p_issue2_ex.sv \
+            rtl/cv32e40p_issue2_lane.sv \
+            rtl/cv32e40p_hamsa_issue_cluster.sv \
+            bhv/cv32e40p_hamsa_issue_cluster_tb.sv
+          vvp /tmp/cluster
+      - name: Elaborate integrated HAMSA top
+        run: |
+          iverilog -g2012 -I rtl/include -s cv32e40p_hamsa_dual_issue_top -o /tmp/hamsa_top \
+            rtl/include/cv32e40p_pkg.sv \
+            rtl/cv32e40p_popcnt.sv \
+            rtl/cv32e40p_alu_div.sv \
+            rtl/cv32e40p_alu.sv \
+            rtl/cv32e40p_compressed_decoder.sv \
+            rtl/cv32e40p_dual_decode_128.sv \
+            rtl/cv32e40p_hamsa_frontend.sv \
+            rtl/cv32e40p_dual_issue_idu.sv \
+            rtl/cv32e40p_dual_issue_forwarding.sv \
+            rtl/cv32e40p_dual_issue_recovery.sv \
+            rtl/cv32e40p_issue2_decoder.sv \
+            rtl/cv32e40p_issue2_ex.sv \
+            rtl/cv32e40p_issue2_lane.sv \
+            rtl/cv32e40p_hamsa_issue_cluster.sv \
+            rtl/cv32e40p_hamsa_dual_issue_top.sv
