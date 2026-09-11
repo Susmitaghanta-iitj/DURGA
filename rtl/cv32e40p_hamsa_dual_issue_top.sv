@@ -44,6 +44,7 @@ module cv32e40p_hamsa_dual_issue_top #(
     input  logic        issue1_ready_i,
 
     // Primary pipeline architectural/forwarding writes.
+    input logic        primary_commit_safe_i,
     input logic        primary_wb_we_i,
     input logic [5:0]  primary_wb_addr_i,
     input logic [31:0] primary_wb_data_i,
@@ -130,36 +131,34 @@ module cv32e40p_hamsa_dual_issue_top #(
   assign pair_fire           = pair_valid && issue1_ready_i;
 
   cv32e40p_hamsa_issue_cluster issue_cluster_i (
-      .clk               (clk),
-      .rst_n             (rst_n),
-      .flush_i           (recovery_flush || recovery_kill),
-      .pair_fire_i       (pair_fire),
-      .inst1_valid_i     (pair_valid),
-      .inst1_i           (inst1),
-      .inst2_valid_i     (inst2_valid && !inst2_illegal),
-      .inst2_i           (inst2),
-      .primary_wb_we_i   (primary_wb_we_i),
-      .primary_wb_addr_i (primary_wb_addr_i),
-      .primary_wb_data_i (primary_wb_data_i),
-      .primary_alu_we_i  (primary_alu_we_i),
-      .primary_alu_addr_i(primary_alu_addr_i),
-      .primary_alu_data_i(primary_alu_data_i),
-      .primary_ex_we_i   (primary_ex_we_i),
-      .primary_ex_addr_i (primary_ex_addr_i),
-      .primary_ex_data_i (primary_ex_data_i),
-      .arb_alu_we_o      (arb_alu_we_o),
-      .arb_alu_addr_o    (arb_alu_addr_o),
-      .arb_alu_data_o    (arb_alu_data_o),
-      .inst2_consumed_o  (inst2_consumed),
-      .issue2_pending_o  (issue2_pending_o),
-      .issue2_blocked_o  (issue2_blocked_o)
+      .clk                  (clk),
+      .rst_n                (rst_n),
+      .flush_i              (recovery_flush || recovery_kill),
+      .pair_fire_i          (pair_fire),
+      .primary_commit_safe_i(primary_commit_safe_i),
+      .inst1_valid_i        (pair_valid),
+      .inst1_i              (inst1),
+      .inst2_valid_i        (inst2_valid && !inst2_illegal),
+      .inst2_i              (inst2),
+      .primary_wb_we_i      (primary_wb_we_i),
+      .primary_wb_addr_i    (primary_wb_addr_i),
+      .primary_wb_data_i    (primary_wb_data_i),
+      .primary_alu_we_i     (primary_alu_we_i),
+      .primary_alu_addr_i   (primary_alu_addr_i),
+      .primary_alu_data_i   (primary_alu_data_i),
+      .primary_ex_we_i      (primary_ex_we_i),
+      .primary_ex_addr_i    (primary_ex_addr_i),
+      .primary_ex_data_i    (primary_ex_data_i),
+      .arb_alu_we_o         (arb_alu_we_o),
+      .arb_alu_addr_o       (arb_alu_addr_o),
+      .arb_alu_data_o       (arb_alu_data_o),
+      .inst2_consumed_o     (inst2_consumed),
+      .issue2_pending_o     (issue2_pending_o),
+      .issue2_blocked_o     (issue2_blocked_o)
   );
 
   assign issue2_issued_o = inst2_consumed;
 
-  // PC2/compression are retained for waveform visibility and future direct
-  // retirement accounting. The secondary lane currently receives decompressed
-  // instruction bits only.
   logic unused_pair_meta;
   assign unused_pair_meta = ^pc2 ^ inst2_c;
 
