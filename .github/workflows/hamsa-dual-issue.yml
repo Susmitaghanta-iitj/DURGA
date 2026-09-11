@@ -32,7 +32,7 @@ jobs:
             evaluation/run_example_vsim.py evaluation/run_full_matrix.py \
             evaluation/run_benchmark_matrix.py evaluation/run_arch_regression.py \
             evaluation/compute_metrics.py evaluation/gen_microbench.py \
-            evaluation/plot_results.py
+            evaluation/plot_results.py evaluation/run_ppa_matrix.py
           python3 util/gen_hamsa_sim_h2.py --native 0
           test -s rtl/cv32e40p_core_hamsa_h2.sv
           test -s rtl/cv32e40p_wrapper_h2_32.sv
@@ -176,5 +176,8 @@ jobs:
         run: |
           python3 util/gen_hamsa_sim_h2.py --native 0
           export DESIGN_RTL_DIR="$PWD/rtl"
-          verilator --lint-only -Wno-fatal --top-module cv32e40p_core_hamsa_h2 \
+          # Use all supported HPM counters to avoid a baseline CV32E40P
+          # Verilator-5 limitation in disabled-counter generate branches.
+          verilator --lint-only -Wno-fatal -GNUM_MHPMCOUNTERS=29 \
+            --top-module cv32e40p_core_hamsa_h2 \
             -f cv32e40p_manifest_h2_32.flist
