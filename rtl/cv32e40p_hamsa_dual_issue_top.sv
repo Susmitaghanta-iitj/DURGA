@@ -5,10 +5,6 @@
 // primary lane remains an external/full-featured pipeline. This module provides
 // the 128-bit L0 frontend, pair delivery, recovery/kill, secondary issue lane,
 // forwarding, and write-port arbitration around that primary lane.
-//
-// It is designed to be wired into cv32e40p_core at the IF/ID and EX/RF
-// boundaries. Keeping the adapter explicit makes the integration contract easy
-// to verify before replacing the legacy 3R2W register file directly.
 
 module cv32e40p_hamsa_dual_issue_top #(
     parameter int L0_LINES = 8,
@@ -17,7 +13,6 @@ module cv32e40p_hamsa_dual_issue_top #(
     input logic clk,
     input logic rst_n,
 
-    // Frontend lookup/refill interface.
     input  logic         lookup_valid_i,
     input  logic [31:0]  lookup_pc_i,
     output logic         lookup_ready_o,
@@ -27,7 +22,6 @@ module cv32e40p_hamsa_dual_issue_top #(
     input  logic [127:0] refill_data_i,
     input  logic         invalidate_l0_i,
 
-    // Redirect/recovery information from the primary lane.
     input logic        branch_in_ex_i,
     input logic        branch_taken_i,
     input logic        jump_redirect_i,
@@ -35,7 +29,6 @@ module cv32e40p_hamsa_dual_issue_top #(
     input logic        debug_redirect_i,
     input logic [31:0] redirect_pc_i,
 
-    // Issue1 delivery to the existing CV32E40P ID stage.
     output logic        issue1_valid_o,
     output logic [31:0] issue1_instr_o,
     output logic [31:0] issue1_pc_o,
@@ -43,7 +36,6 @@ module cv32e40p_hamsa_dual_issue_top #(
     output logic        issue1_illegal_c_o,
     input  logic        issue1_ready_i,
 
-    // Primary pipeline architectural/forwarding writes.
     input logic        primary_commit_safe_i,
     input logic        primary_wb_we_i,
     input logic [5:0]  primary_wb_addr_i,
@@ -55,7 +47,6 @@ module cv32e40p_hamsa_dual_issue_top #(
     input logic [5:0]  primary_ex_addr_i,
     input logic [31:0] primary_ex_data_i,
 
-    // Write-port result that replaces the direct primary ALU->RF connection.
     output logic        arb_alu_we_o,
     output logic [5:0]  arb_alu_addr_o,
     output logic [31:0] arb_alu_data_o,
@@ -63,7 +54,13 @@ module cv32e40p_hamsa_dual_issue_top #(
     output logic [31:0] next_pc_o,
     output logic        issue2_issued_o,
     output logic        issue2_pending_o,
-    output logic        issue2_blocked_o
+    output logic        issue2_blocked_o,
+    output logic        issue2_block_raw_o,
+    output logic        issue2_block_waw_o,
+    output logic        issue2_block_unsupported_o,
+    output logic        issue2_block_serializing_o,
+    output logic        issue2_block_busy_o,
+    output logic        issue2_block_decode_o
 );
 
   logic pair_valid;
@@ -131,30 +128,36 @@ module cv32e40p_hamsa_dual_issue_top #(
   assign pair_fire           = pair_valid && issue1_ready_i;
 
   cv32e40p_hamsa_issue_cluster issue_cluster_i (
-      .clk                  (clk),
-      .rst_n                (rst_n),
-      .flush_i              (recovery_flush || recovery_kill),
-      .pair_fire_i          (pair_fire),
-      .primary_commit_safe_i(primary_commit_safe_i),
-      .inst1_valid_i        (pair_valid),
-      .inst1_i              (inst1),
-      .inst2_valid_i        (inst2_valid && !inst2_illegal),
-      .inst2_i              (inst2),
-      .primary_wb_we_i      (primary_wb_we_i),
-      .primary_wb_addr_i    (primary_wb_addr_i),
-      .primary_wb_data_i    (primary_wb_data_i),
-      .primary_alu_we_i     (primary_alu_we_i),
-      .primary_alu_addr_i   (primary_alu_addr_i),
-      .primary_alu_data_i   (primary_alu_data_i),
-      .primary_ex_we_i      (primary_ex_we_i),
-      .primary_ex_addr_i    (primary_ex_addr_i),
-      .primary_ex_data_i    (primary_ex_data_i),
-      .arb_alu_we_o         (arb_alu_we_o),
-      .arb_alu_addr_o       (arb_alu_addr_o),
-      .arb_alu_data_o       (arb_alu_data_o),
-      .inst2_consumed_o     (inst2_consumed),
-      .issue2_pending_o     (issue2_pending_o),
-      .issue2_blocked_o     (issue2_blocked_o)
+      .clk                        (clk),
+      .rst_n                      (rst_n),
+      .flush_i                    (recovery_flush || recovery_kill),
+      .pair_fire_i                (pair_fire),
+      .primary_commit_safe_i      (primary_commit_safe_i),
+      .inst1_valid_i              (pair_valid),
+      .inst1_i                    (inst1),
+      .inst2_valid_i              (inst2_valid && !inst2_illegal),
+      .inst2_i                    (inst2),
+      .primary_wb_we_i            (primary_wb_we_i),
+      .primary_wb_addr_i          (primary_wb_addr_i),
+      .primary_wb_data_i          (primary_wb_data_i),
+      .primary_alu_we_i           (primary_alu_we_i),
+      .primary_alu_addr_i         (primary_alu_addr_i),
+      .primary_alu_data_i         (primary_alu_data_i),
+      .primary_ex_we_i            (primary_ex_we_i),
+      .primary_ex_addr_i          (primary_ex_addr_i),
+      .primary_ex_data_i          (primary_ex_data_i),
+      .arb_alu_we_o               (arb_alu_we_o),
+      .arb_alu_addr_o             (arb_alu_addr_o),
+      .arb_alu_data_o             (arb_alu_data_o),
+      .inst2_consumed_o           (inst2_consumed),
+      .issue2_pending_o           (issue2_pending_o),
+      .issue2_blocked_o           (issue2_blocked_o),
+      .issue2_block_raw_o         (issue2_block_raw_o),
+      .issue2_block_waw_o         (issue2_block_waw_o),
+      .issue2_block_unsupported_o (issue2_block_unsupported_o),
+      .issue2_block_serializing_o (issue2_block_serializing_o),
+      .issue2_block_busy_o        (issue2_block_busy_o),
+      .issue2_block_decode_o      (issue2_block_decode_o)
   );
 
   assign issue2_issued_o = inst2_consumed;
