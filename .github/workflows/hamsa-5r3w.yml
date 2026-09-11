@@ -32,9 +32,10 @@ jobs:
       - name: Verilator lint native 5R3W H2 core
         run: |
           export DESIGN_RTL_DIR="$PWD/rtl"
-          # NUM_MHPMCOUNTERS=29 avoids a known baseline CV32E40P Verilator-5
-          # limitation where disabled HPM generate slices combine continuous and
-          # procedural assignments. It does not change the HAMSA datapath.
-          verilator --lint-only -Wno-fatal -GNUM_MHPMCOUNTERS=29 \
+          # The upstream CV32E40P CSR file uses continuous tie-offs for
+          # unimplemented packed-array HPM slices and procedural assignments
+          # for implemented slices. Verilator 5 reports this legacy construct
+          # as BLKANDNBLK even though it is outside the HAMSA datapath.
+          verilator --lint-only -Wno-fatal -Wno-BLKANDNBLK \
             --top-module cv32e40p_core_hamsa_h2_5r3w \
             -f cv32e40p_manifest_h2_5r3w.flist
