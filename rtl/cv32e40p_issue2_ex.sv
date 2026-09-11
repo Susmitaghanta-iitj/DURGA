@@ -2,7 +2,7 @@
 // Licensed under the Solderpad Hardware License, Version 2.0.
 //
 // Secondary execution lane for the asymmetric dual-issue prototype.
-// Milestone-3 scope is deliberately restricted to scalar RV32I ALU operations.
+// Supports scalar RV32I ALU operations and a compact single-cycle RV32M MUL.
 
 module cv32e40p_issue2_ex
   import cv32e40p_pkg::*;
@@ -12,6 +12,7 @@ module cv32e40p_issue2_ex
 
     input logic        valid_i,
     input alu_opcode_e alu_operator_i,
+    input logic        mul_en_i,
     input logic [31:0] operand_a_i,
     input logic [31:0] operand_b_i,
     input logic [4:0]  rd_i,
@@ -28,19 +29,19 @@ module cv32e40p_issue2_ex
   logic [31:0] alu_result;
   logic        alu_cmp_result;
   logic        alu_ready;
+  logic [31:0] mul_result;
 
   logic        valid_q;
   logic [4:0]  rd_q;
   logic [31:0] result_q;
 
-  // The current Issue2 lane contains no long-latency operation, therefore its
-  // backpressure is solely determined by the one-entry output register.
-  assign ready_o = !valid_q || wb_ready_i;
+  assign ready_o   = !valid_q || wb_ready_i;
+  assign mul_result = operand_a_i * operand_b_i;
 
   cv32e40p_alu alu_issue2_i (
       .clk                (clk),
       .rst_n              (rst_n),
-      .enable_i           (valid_i && ready_o),
+      .enable_i           (valid_i && ready_o && !mul_en_i),
       .operator_i         (alu_operator_i),
       .operand_a_i        (operand_a_i),
       .operand_b_i        (operand_b_i),
@@ -64,15 +65,13 @@ module cv32e40p_issue2_ex
       rd_q     <= '0;
       result_q <= '0;
     end else begin
-      // Kill has priority so a younger speculative Issue2 operation can never
-      // become architecturally visible after an Issue1 redirect.
       if (kill_i) begin
         valid_q <= 1'b0;
       end else if (ready_o) begin
-        valid_q <= valid_i && alu_ready;
-        if (valid_i && alu_ready) begin
+        valid_q <= valid_i && (mul_en_i || alu_ready);
+        if (valid_i && (mul_en_i || alu_ready)) begin
           rd_q     <= rd_i;
-          result_q <= alu_result;
+          result_q <= mul_en_i ? mul_result : alu_result;
         end
       end
     end
@@ -82,8 +81,6 @@ module cv32e40p_issue2_ex
   assign rd_o     = rd_q;
   assign result_o = result_q;
 
-  // Keep comparison output explicitly consumed for lint cleanliness. The
-  // current lane has no branch instructions, so it is intentionally unused.
   logic unused_cmp;
   assign unused_cmp = alu_cmp_result;
 
