@@ -18,6 +18,15 @@ jobs:
           grep -q "module cv32e40p_core_hamsa" rtl/cv32e40p_core_hamsa.sv
           grep -q "hamsa_pair_buffer_i" rtl/cv32e40p_core_hamsa.sv
           grep -q "hamsa_issue_cluster_i" rtl/cv32e40p_core_hamsa.sv
+      - name: Generate evaluation testbenches
+        run: |
+          python3 -m py_compile util/gen_baseline_eval_tb.py util/gen_hamsa_sim.py evaluation/run_example_vsim.py evaluation/run_benchmark_matrix.py evaluation/compute_metrics.py
+          python3 util/gen_baseline_eval_tb.py
+          python3 util/gen_hamsa_sim.py
+          test -s example_tb/core/tb_top_eval.sv
+          test -s example_tb/core/tb_top_hamsa.sv
+          grep -q "HAMSA_METRIC cycles=" example_tb/core/tb_top_eval.sv
+          grep -q "issue1_retired=" example_tb/core/tb_top_hamsa.sv
       - name: Install Icarus Verilog
         run: sudo apt-get update && sudo apt-get install -y iverilog
       - name: Compile and run Issue Decision Unit test
