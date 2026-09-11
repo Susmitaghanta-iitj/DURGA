@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 """Generate simulation-facing HAMSA wrappers without modifying baseline sources.
 
-Outputs:
-  rtl/cv32e40p_wrapper_hamsa.sv
-  example_tb/core/cv32e40p_tb_subsystem_hamsa.sv
-  example_tb/core/tb_top_hamsa.sv
-  cv32e40p_manifest_hamsa.flist
-
-The generator first runs gen_hamsa_core.py, then performs checked substitutions
-on the existing CV32E40P wrapper/testbench files. The baseline files are left
-untouched so B0 and HAMSA can be compiled side by side from the same checkout.
+Use --enable-issue2 0 for H0 and --enable-issue2 1 for H1.
 """
 
 from pathlib import Path
+import argparse
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +21,11 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument("--enable-issue2", choices=["0", "1"], default="1")
+    args = p.parse_args()
+    issue2_literal = "1'b1" if args.enable_issue2 == "1" else "1'b0"
+
     subprocess.run(["python3", str(ROOT / "util" / "gen_hamsa_core.py")], check=True)
 
     wrapper = (RTL / "cv32e40p_wrapper.sv").read_text()
@@ -35,6 +33,13 @@ def main() -> None:
                            "module cv32e40p_wrapper_hamsa #(\n", "wrapper module")
     wrapper = replace_once(wrapper, "  cv32e40p_core #(\n",
                            "  cv32e40p_core_hamsa #(\n", "core instance")
+    wrapper = replace_once(
+        wrapper,
+        "      .NUM_MHPMCOUNTERS(NUM_MHPMCOUNTERS)\n  ) core_i (",
+        f"      .NUM_MHPMCOUNTERS(NUM_MHPMCOUNTERS),\n"
+        f"      .HAMSA_ENABLE_ISSUE2({issue2_literal})\n  ) core_i (",
+        "Issue2 configuration",
+    )
     (RTL / "cv32e40p_wrapper_hamsa.sv").write_text(wrapper)
 
     subsystem = (TB / "cv32e40p_tb_subsystem.sv").read_text()
@@ -54,8 +59,6 @@ def main() -> None:
 
     marker = "  // check if we succeded\n"
     counter_block = r'''  // HAMSA benchmark-observability counters.
-  // mhpmevent_minstret counts primary-lane architectural retire events. Issue2
-  // retire is counted separately, so total retired = issue1 + issue2.
   longint unsigned hamsa_cycles_q;
   longint unsigned hamsa_issue1_retired_q;
   longint unsigned hamsa_issue2_issued_q;
@@ -77,8 +80,7 @@ def main() -> None:
         hamsa_issue1_retired_q <= hamsa_issue1_retired_q + 1;
       if (wrapper_i.wrapper_i.core_i.hamsa_inst2_consumed)
         hamsa_issue2_issued_q <= hamsa_issue2_issued_q + 1;
-      if (wrapper_i.wrapper_i.core_i.hamsa_alu_we_fw &&
-          !wrapper_i.wrapper_i.core_i.regfile_alu_we_fw)
+      if (wrapper_i.wrapper_i.core_i.hamsa_issue2_retired)
         hamsa_issue2_retired_q <= hamsa_issue2_retired_q + 1;
       if (wrapper_i.wrapper_i.core_i.hamsa_issue2_blocked)
         hamsa_issue2_blocked_q <= hamsa_issue2_blocked_q + 1;
@@ -120,7 +122,8 @@ def main() -> None:
                             "manifest wrapper")
     (ROOT / "cv32e40p_manifest_hamsa.flist").write_text(manifest)
 
-    print("generated HAMSA simulation wrapper/testbench/manifest")
+    mode = "H1" if args.enable_issue2 == "1" else "H0"
+    print(f"generated HAMSA simulation wrapper/testbench/manifest for {mode}")
 
 
 if __name__ == "__main__":
