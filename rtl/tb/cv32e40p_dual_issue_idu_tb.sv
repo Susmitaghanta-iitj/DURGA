@@ -69,47 +69,51 @@ module cv32e40p_dual_issue_idu_tb;
     inst1_valid = 1'b1;
     inst2_valid = 1'b1;
 
-    // add x3,x1,x2 ; xor x6,x4,x5 -> independent ALU pair.
     inst1 = enc_r(7'b0000000, 5'd2, 5'd1, 3'b000, 5'd3, 7'b0110011);
     inst2 = enc_r(7'b0000000, 5'd5, 5'd4, 3'b100, 5'd6, 7'b0110011);
     expect_issue2(1'b1, "independent ALU pair");
 
-    // add x3,x1,x2 ; xor x6,x3,x5 -> same-cycle RAW, block Issue2.
     inst2 = enc_r(7'b0000000, 5'd5, 5'd3, 3'b100, 5'd6, 7'b0110011);
     expect_issue2(1'b0, "RAW dependency");
     if (!raw_hazard) $fatal(1, "RAW dependency was not reported");
 
-    // add x3,x1,x2 ; addi x3,x4,1 -> WAW, block Issue2.
     inst2 = enc_i(12'd1, 5'd4, 3'b000, 5'd3, 7'b0010011);
     expect_issue2(1'b0, "WAW dependency");
     if (!waw_hazard) $fatal(1, "WAW dependency was not reported");
 
-    // lw x3,0(x1) ; add x6,x4,x5 -> asymmetric memory+ALU is allowed.
     inst1 = enc_i(12'd0, 5'd1, 3'b010, 5'd3, 7'b0000011);
     inst2 = enc_r(7'b0000000, 5'd5, 5'd4, 3'b000, 5'd6, 7'b0110011);
     expect_issue2(1'b1, "Issue1 load + Issue2 ALU");
 
-    // lw x3,0(x1) ; add x6,x3,x5 -> load result dependency blocks Issue2.
     inst2 = enc_r(7'b0000000, 5'd5, 5'd3, 3'b000, 5'd6, 7'b0110011);
     expect_issue2(1'b0, "load-use RAW");
 
-    // add ; lw in Issue2 -> unsupported in milestone 1.
     inst1 = enc_r(7'b0000000, 5'd2, 5'd1, 3'b000, 5'd3, 7'b0110011);
     inst2 = enc_i(12'd0, 5'd4, 3'b010, 5'd6, 7'b0000011);
     expect_issue2(1'b0, "Issue2 load unsupported");
     if (!issue2_unsupported) $fatal(1, "Issue2 load should be unsupported");
 
-    // add ; mul in Issue2 -> unsupported until secondary MUL/DSP lane exists.
+    // MUL is now part of the compact Issue2 RV32M subset.
     inst2 = enc_r(7'b0000001, 5'd5, 5'd4, 3'b000, 5'd6, 7'b0110011);
-    expect_issue2(1'b0, "Issue2 MUL unsupported");
+    expect_issue2(1'b1, "Issue2 MUL supported");
 
-    // beq x1,x2,+imm ; add -> serialize until branch speculation is implemented.
+    // DIV remains unsupported.
+    inst2 = enc_r(7'b0000001, 5'd5, 5'd4, 3'b100, 5'd6, 7'b0110011);
+    expect_issue2(1'b0, "Issue2 DIV unsupported");
+
+    // Default IDU instance remains conservative behind branches. The HAMSA
+    // issue cluster enables SPECULATE_BEHIND_BRANCH and relies on recovery kill.
     inst1 = 32'h00208063;
     inst2 = enc_r(7'b0000000, 5'd5, 5'd4, 3'b000, 5'd6, 7'b0110011);
     expect_issue2(1'b0, "branch serialization");
-    if (!issue1_serializing) $fatal(1, "branch should serialize milestone-1 issue");
+    if (!issue1_serializing) $fatal(1, "default branch policy should serialize");
 
-    // Missing second instruction never issues.
+    // Unknown/custom Issue1 must serialize conservatively.
+    inst1 = 32'h0000000b;
+    inst2 = enc_r(7'b0000000, 5'd5, 5'd4, 3'b000, 5'd6, 7'b0110011);
+    expect_issue2(1'b0, "unknown Issue1 serialization");
+    if (!issue1_serializing) $fatal(1, "unknown Issue1 should serialize");
+
     inst1 = enc_r(7'b0000000, 5'd2, 5'd1, 3'b000, 5'd3, 7'b0110011);
     inst2_valid = 1'b0;
     expect_issue2(1'b0, "invalid second instruction");
