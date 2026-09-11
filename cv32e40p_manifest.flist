@@ -43,6 +43,9 @@ ${DESIGN_RTL_DIR}/cv32e40p_dual_issue_forwarding.sv
 ${DESIGN_RTL_DIR}/cv32e40p_dual_issue_recovery.sv
 ${DESIGN_RTL_DIR}/cv32e40p_l0_icache_128.sv
 ${DESIGN_RTL_DIR}/cv32e40p_hamsa_frontend.sv
+${DESIGN_RTL_DIR}/cv32e40p_hamsa_refill_32to128.sv
+${DESIGN_RTL_DIR}/cv32e40p_hamsa_refill_native128.sv
+${DESIGN_RTL_DIR}/cv32e40p_hamsa_if_stage.sv
 ${DESIGN_RTL_DIR}/cv32e40p_issue2_decoder.sv
 ${DESIGN_RTL_DIR}/cv32e40p_issue2_lane.sv
 ${DESIGN_RTL_DIR}/cv32e40p_dual_issue_pair_unit.sv
