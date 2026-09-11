@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 """Run a CV32E40P example-testbench firmware in B0 or HAMSA mode.
 
-This is the first executable bridge between the existing example_tb and the
-HAMSA evaluation matrix. It intentionally supports the bring-up HAMSA backend
-(H1-style 32-bit frontend pairing) first. H0 and the final H2 128-bit-L0 system
-are rejected until explicit build-time switches exist for them.
-
-The firmware argument is a .hex file compatible with example_tb/core/tb_top.sv.
-For B0 the stock cv32e40p_manifest.flist/tb_top are used. For H1 this script
-runs util/gen_hamsa_sim.py and overrides the example Makefile's manifest/top.
+B0 uses an evaluation-only generated top that leaves the baseline RTL untouched
+but emits the same HAMSA_METRIC log contract as H1. H0 and H2 remain reserved
+until their explicit architectural switches/interfaces are complete.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 from pathlib import Path
 
@@ -53,14 +47,14 @@ def main() -> None:
         tb_top = "tb_top_hamsa.sv"
         vopt_top = "tb_top_hamsa_vopt"
     else:
+        subprocess.run(["python3", str(ROOT / "util" / "gen_baseline_eval_tb.py")],
+                       cwd=ROOT, check=True)
         manifest = str(ROOT / "cv32e40p_manifest.flist")
-        tb_top = "tb_top.sv"
-        vopt_top = "tb_top_vopt"
+        tb_top = "tb_top_eval.sv"
+        vopt_top = "tb_top_eval_vopt"
 
     flags = f'+firmware={fw} +maxcycles={args.maxcycles} {args.vsim_flags}'.strip()
 
-    # The existing example Makefile already knows how to compile the memory
-    # system and RTL. Command-line variables override its stock top/manifest.
     make_cmd = [
         "make", "vsim-run",
         f"CV_CORE_MANIFEST={manifest}",
@@ -72,13 +66,6 @@ def main() -> None:
     rc = run(make_cmd, TB)
     if rc:
         raise SystemExit(rc)
-
-    # The stock B0 testbench does not know HAMSA counters. Still emit a machine-
-    # readable cycle placeholder only if the simulator transcript contained one;
-    # otherwise the matrix driver correctly refuses to treat the run as measured.
-    if args.configuration == "B0":
-        print("[HAMSA] B0 completed. Add baseline metric printing to tb_top or "
-              "firmware stats before feeding this run to run_benchmark_matrix.py.")
 
 
 if __name__ == "__main__":
