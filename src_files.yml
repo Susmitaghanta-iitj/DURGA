@@ -50,6 +50,7 @@ cv32e40p:
     ./rtl/cv32e40p_dual_issue_recovery.sv,
     ./rtl/cv32e40p_l0_icache_128.sv,
     ./rtl/cv32e40p_hamsa_frontend.sv,
+    ./rtl/cv32e40p_hamsa_perf_counters.sv,
     ./rtl/cv32e40p_issue2_decoder.sv,
     ./rtl/cv32e40p_issue2_lane.sv,
     ./rtl/cv32e40p_issue2_ex.sv,
