@@ -1,0 +1,150 @@
+// Copyright 2026
+//
+// Licensed under the Solderpad Hardware License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://solderpad.org/licenses/
+//
+// Lightweight asymmetric dual-issue decision unit for CV32E40P.
+//
+// Policy:
+//   * Issue1 remains the full CV32E40P pipeline.
+//   * Issue2 accepts RV32I OP/OP-IMM plus scalar RV32M MUL.
+//   * Memory, CSR, jumps, fence and custom instructions are kept on Issue1.
+//   * Same-cycle RAW and WAW hazards from Issue1 -> Issue2 block Issue2.
+//   * Conditional branches may pair speculatively when enabled; recovery must
+//     kill the younger Issue2 operation on a taken redirect.
+//   * Unknown/custom Issue1 classes serialize conservatively until explicitly
+//     described by the partial decoder.
+
+module cv32e40p_dual_issue_idu #(
+    parameter bit SPECULATE_BEHIND_BRANCH = 1'b0
+) (
+    input  logic        inst1_valid_i,
+    input  logic [31:0] inst1_i,
+    input  logic        inst2_valid_i,
+    input  logic [31:0] inst2_i,
+
+    output logic        issue1_valid_o,
+    output logic        issue2_valid_o,
+
+    output logic        raw_hazard_o,
+    output logic        waw_hazard_o,
+    output logic        issue2_unsupported_o,
+    output logic        issue1_serializing_o,
+
+    output logic [4:0]  inst1_rd_o,
+    output logic [4:0]  inst2_rs1_o,
+    output logic [4:0]  inst2_rs2_o,
+    output logic [4:0]  inst2_rd_o
+);
+
+  localparam logic [6:0] OPC_LOAD     = 7'b0000011;
+  localparam logic [6:0] OPC_MISC_MEM = 7'b0001111;
+  localparam logic [6:0] OPC_OP_IMM   = 7'b0010011;
+  localparam logic [6:0] OPC_AUIPC    = 7'b0010111;
+  localparam logic [6:0] OPC_STORE    = 7'b0100011;
+  localparam logic [6:0] OPC_OP       = 7'b0110011;
+  localparam logic [6:0] OPC_LUI      = 7'b0110111;
+  localparam logic [6:0] OPC_BRANCH   = 7'b1100011;
+  localparam logic [6:0] OPC_JALR     = 7'b1100111;
+  localparam logic [6:0] OPC_JAL      = 7'b1101111;
+  localparam logic [6:0] OPC_SYSTEM   = 7'b1110011;
+
+  logic [6:0] opcode1;
+  logic [6:0] opcode2;
+
+  logic       inst1_writes_rd;
+  logic       inst2_writes_rd;
+  logic       inst2_uses_rs1;
+  logic       inst2_uses_rs2;
+  logic       issue2_class_supported;
+
+  assign opcode1     = inst1_i[6:0];
+  assign opcode2     = inst2_i[6:0];
+  assign inst1_rd_o  = inst1_i[11:7];
+  assign inst2_rd_o  = inst2_i[11:7];
+  assign inst2_rs1_o = inst2_i[19:15];
+  assign inst2_rs2_o = inst2_i[24:20];
+
+  always_comb begin
+    inst1_writes_rd = 1'b0;
+    unique case (opcode1)
+      OPC_LOAD,
+      OPC_OP_IMM,
+      OPC_AUIPC,
+      OPC_OP,
+      OPC_LUI,
+      OPC_JALR,
+      OPC_JAL: inst1_writes_rd = (inst1_rd_o != 5'd0);
+      default: inst1_writes_rd = 1'b0;
+    endcase
+  end
+
+  always_comb begin
+    issue2_class_supported = 1'b0;
+    inst2_uses_rs1         = 1'b0;
+    inst2_uses_rs2         = 1'b0;
+    inst2_writes_rd        = 1'b0;
+
+    unique case (opcode2)
+      OPC_OP_IMM: begin
+        issue2_class_supported = 1'b1;
+        inst2_uses_rs1         = 1'b1;
+        inst2_uses_rs2         = 1'b0;
+        inst2_writes_rd        = (inst2_rd_o != 5'd0);
+      end
+
+      OPC_OP: begin
+        // Normal RV32I OP is supported. From RV32M, only MUL (funct3=000)
+        // is accepted by the compact secondary multiplier.
+        issue2_class_supported = (inst2_i[31:25] != 7'b0000001) ||
+                                 (inst2_i[14:12] == 3'b000);
+        inst2_uses_rs1         = 1'b1;
+        inst2_uses_rs2         = 1'b1;
+        inst2_writes_rd        = (inst2_rd_o != 5'd0);
+      end
+
+      default: begin
+        issue2_class_supported = 1'b0;
+      end
+    endcase
+  end
+
+  always_comb begin
+    unique case (opcode1)
+      OPC_LOAD,
+      OPC_STORE,
+      OPC_OP_IMM,
+      OPC_AUIPC,
+      OPC_OP,
+      OPC_LUI:    issue1_serializing_o = 1'b0;
+      OPC_BRANCH: issue1_serializing_o = !SPECULATE_BEHIND_BRANCH;
+      default:    issue1_serializing_o = 1'b1;
+    endcase
+  end
+
+  assign raw_hazard_o = inst1_writes_rd &&
+                        (((inst1_rd_o == inst2_rs1_o) && inst2_uses_rs1) ||
+                         ((inst1_rd_o == inst2_rs2_o) && inst2_uses_rs2));
+
+  assign waw_hazard_o = inst1_writes_rd && inst2_writes_rd &&
+                        (inst1_rd_o == inst2_rd_o);
+
+  assign issue2_unsupported_o = !issue2_class_supported;
+
+  assign issue1_valid_o = inst1_valid_i;
+  assign issue2_valid_o = inst1_valid_i && inst2_valid_i &&
+                          issue2_class_supported &&
+                          !issue1_serializing_o &&
+                          !raw_hazard_o &&
+                          !waw_hazard_o;
+
+  logic unused_opcode_refs;
+  assign unused_opcode_refs = (opcode1 == OPC_MISC_MEM) || (opcode1 == OPC_JALR) ||
+                              (opcode1 == OPC_JAL) || (opcode1 == OPC_SYSTEM) ||
+                              (opcode2 == OPC_LOAD) || (opcode2 == OPC_STORE) ||
+                              (opcode2 == OPC_AUIPC) || (opcode2 == OPC_LUI);
+
+endmodule
