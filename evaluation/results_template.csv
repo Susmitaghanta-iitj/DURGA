@@ -1,0 +1,5 @@
+benchmark,configuration,git_sha,tool,tool_version,compiler,compiler_version,compiler_flags,clock_mhz,memory_config,cycles,issue1_retired,issue2_issued,issue2_retired,issue2_blocked,issue2_killed,block_raw,block_waw,block_unsupported,block_serializing,block_busy,block_decode,l0_lookups,l0_hits,benchmark_score,area_um2,cell_area_um2,fmax_mhz,dynamic_power_mw,leakage_power_mw,avg_power_mw,notes
+coremark,B0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+coremark,H0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+coremark,H1,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+coremark,H2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

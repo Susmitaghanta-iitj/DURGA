@@ -1,0 +1,1 @@
+configuration,benchmark,refill_mode,cycles,retired,ipc,dual_pairs,dual_issue_util,l0_lookups,l0_hits,l0_hit_rate,demand_misses,prefetch_candidates,prefetch_issued,prefetch_fills,prefetch_useful,prefetch_wasted,prefetch_suppressed,prefetch_accuracy,prefetch_coverage,tcim_requests,mac8_ops,mac16_ops,mac32_ops,sparv_stall_cycles,frequency_mhz,area_um2,power_mw,energy_uj,notes
